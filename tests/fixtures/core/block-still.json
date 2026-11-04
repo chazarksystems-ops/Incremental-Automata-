@@ -1,0 +1,43 @@
+{
+  "id": "block-still",
+  "description": "Block is a still life.",
+  "board": {
+    "width": 16,
+    "height": 16
+  },
+  "initial": [
+    {
+      "file": "src/patterns/rle/block.rle",
+      "x": 7,
+      "y": 7
+    }
+  ],
+  "checkpoints": [
+    0,
+    1,
+    2,
+    50
+  ],
+  "expected": {
+    "0": {
+      "population": 4,
+      "hash": "330bc5e2114509de9b23fba5abf0e09f62194feb1aa8ad37dc93ca2156e92b25"
+    },
+    "1": {
+      "population": 4,
+      "hash": "2304bc630ab473889881b6877aa46a91375de55a87bdff4128102c2fc8aa8f9e"
+    },
+    "2": {
+      "population": 4,
+      "hash": "7ec52820f1071c672787cb3fd615779f4174b387164ca1a49d765b0acfb2688c"
+    },
+    "50": {
+      "population": 4,
+      "hash": "a2fbb44ee81580c82d792f046f1f51ad0a2caf1febf923f0510fa0a1e6c046fb"
+    }
+  },
+  "reference": {
+    "tool": "python-lifelib 2.5.6",
+    "method": "infinite plane, clipped to the board rectangle after every generation"
+  }
+}

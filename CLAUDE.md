@@ -41,11 +41,13 @@ collectors, currency, research and progression.
 ## Stack
 
 TypeScript + Vite (`vanilla-ts`), Canvas 2D, Vitest (unit/fixture/integration),
-Playwright Test (e2e), GitHub Actions CI. Golly is an external reference oracle,
-not a dependency.
+Playwright Test (e2e, pinned to 1.63.0 to match the preinstalled Chromium), GitHub Actions CI.
+Independent reference oracle: python-lifelib (`scripts/validate-fixtures/reference_lifelib.py`);
+Golly is an optional external cross-check. Neither is a runtime dependency.
 
-Expected scripts once Phase 1 scaffolding lands (keep these names stable — the
-skills rely on them):
+Status: Phase 1 complete (`docs/PHASE1_REPORT.md`). Next: Phase 2.
+
+Scripts (keep these names stable — the skills rely on them):
 
 | Command | Purpose |
 | --- | --- |
@@ -55,10 +57,13 @@ skills rely on them):
 | `npm test` | Vitest (all unit/fixture/integration) |
 | `npm run test:e2e` | Playwright Test |
 | `npm run build` | production build |
-| `npm run validate:fixtures` | recompute fixture hashes and diff against committed expectations |
+| `npm run validate:fixtures` | recompute fixture hashes and diff against committed (lifelib-generated) expectations |
 | `npm run bench` | generation/render benchmarks (128×128, 256×256) |
 
 If a script does not exist yet, say so in the report rather than silently skipping it.
+
+Layout: `src/core` (pure engine) · `src/patterns` (RLE + manifest) · `src/game` (clock, simulation, command log)
+· `src/render` · `src/ui` · `src/scenarios` · `tests/{core,game,patterns,render,e2e,fixtures}`. See `docs/ARCHITECTURE.md`.
 
 ## Skills in this repo (`.claude/skills/`)
 

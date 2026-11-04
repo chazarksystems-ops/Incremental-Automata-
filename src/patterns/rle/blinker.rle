@@ -1,0 +1,4 @@
+#N Blinker
+#C Period-2 oscillator.
+x = 3, y = 1, rule = B3/S23
+3o!

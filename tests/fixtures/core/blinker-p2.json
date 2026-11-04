@@ -1,0 +1,48 @@
+{
+  "id": "blinker-p2",
+  "description": "Blinker oscillates with period 2.",
+  "board": {
+    "width": 16,
+    "height": 16
+  },
+  "initial": [
+    {
+      "file": "src/patterns/rle/blinker.rle",
+      "x": 6,
+      "y": 7
+    }
+  ],
+  "checkpoints": [
+    0,
+    1,
+    2,
+    3,
+    100
+  ],
+  "expected": {
+    "0": {
+      "population": 3,
+      "hash": "29313b88c509a74035dda9c41d66d350d0b4ac3175442cfee3d65b9059effe80"
+    },
+    "1": {
+      "population": 3,
+      "hash": "71b8892b29d652e420012a872be48e8ee1283187da78bcc3e8bee871ab12f508"
+    },
+    "2": {
+      "population": 3,
+      "hash": "0b05756b368b970b140e551575fb078fc784090059763f61fd1c773169896877"
+    },
+    "3": {
+      "population": 3,
+      "hash": "5a45a2f2b063d21e43a96b71427213e63708b78f4279aaf236ce56aa24053ae7"
+    },
+    "100": {
+      "population": 3,
+      "hash": "e2df06686c0b03870beb60707132d99df7a6e52cd36dc5c538f367e8394a9a99"
+    }
+  },
+  "reference": {
+    "tool": "python-lifelib 2.5.6",
+    "method": "infinite plane, clipped to the board rectangle after every generation"
+  }
+}

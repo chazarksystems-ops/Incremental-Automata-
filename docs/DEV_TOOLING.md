@@ -38,7 +38,7 @@ restating them.
 | Playwright MCP (`@playwright/mcp`) | **enabled** in `.mcp.json`, pinned to `0.0.83` | Canvas UI interaction, screenshots, console errors |
 | Chrome DevTools MCP | deferred | Add only when profiling is needed (simulation speed, render cost, memory) |
 | GitHub MCP | not added | Local `git` plus the host's GitHub integration cover our needs |
-| Golly MCP | **not built** | Golly stays an independent reference app driven by local scripts. Revisit only if frequent programmatic access becomes necessary, and then expose a small restricted interface |
+| Golly MCP | **not built** (python-lifelib script is the reference oracle) | Golly stays an independent reference app driven by local scripts. Revisit only if frequent programmatic access becomes necessary, and then expose a small restricted interface |
 
 Adding Chrome DevTools later (pin a reviewed version, don't use `@latest`):
 
@@ -62,7 +62,7 @@ MCP version, review its changelog and update this table.
 
 ## Rollout checklist
 
-1. Foundation — Vite `vanilla-ts` + git; `CLAUDE.md` ✔; Vitest + Playwright Test; Playwright MCP ✔
-2. Simulation — `/life-verify` ✔ and `/pattern-lab` ✔ written; import canonical RLE; cross-check with Golly
+1. Foundation — Vite `vanilla-ts` + git ✔; `CLAUDE.md` ✔; Vitest + Playwright Test ✔; Playwright MCP ✔; CI ✔
+2. Simulation — `/life-verify` ✔ and `/pattern-lab` ✔ written; canonical RLE imported ✔; cross-checked with python-lifelib ✔ (Golly optional)
 3. Gameplay — `/factory-build` ✔ and `/playtest` ✔ written; build collectors + economy; run browser verification
 4. Optimisation — Chrome DevTools MCP if needed; `/experiment` ✔ written (gated); deterministic layout comparisons; review playtests before expanding

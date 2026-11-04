@@ -1,0 +1,88 @@
+{
+  "id": "gosper-chamber-128",
+  "description": "Gosper gun in the default 128x128 chamber; covers emission, transit and edge collisions.",
+  "board": {
+    "width": 128,
+    "height": 128
+  },
+  "initial": [
+    {
+      "file": "src/patterns/rle/gosper-glider-gun.rle",
+      "x": 4,
+      "y": 4
+    }
+  ],
+  "checkpoints": [
+    0,
+    1,
+    15,
+    30,
+    60,
+    90,
+    120,
+    300,
+    450,
+    600,
+    1000,
+    2000,
+    4000
+  ],
+  "expected": {
+    "0": {
+      "population": 36,
+      "hash": "f6d11bd23ebf563573c4f53b4617866f8f6744d4576db1b32897c51332c9c5b3"
+    },
+    "1": {
+      "population": 39,
+      "hash": "012cd14906cceb4b507c9136a72c82115a2ed15dae58b017838189a90736f589"
+    },
+    "15": {
+      "population": 42,
+      "hash": "c829d32acf49981ff4c5cfb6b65d73938b046bd568fc339ad28ce33bc5be6f1b"
+    },
+    "30": {
+      "population": 41,
+      "hash": "381b0a7fdb42e6eaa03e5684f9060982aa14c71ca078983e27e069db486a4a5b"
+    },
+    "60": {
+      "population": 46,
+      "hash": "e75a15f81ac48509a812ebbd80bbe5a4abfd2ae8dabbe53c0a70436547edc128"
+    },
+    "90": {
+      "population": 51,
+      "hash": "b1887ddbeabdb96840096123326fb28880796559b4d7eedbf0e47d8c90891c46"
+    },
+    "120": {
+      "population": 56,
+      "hash": "af48cdf72edee97411f96d5ad6c4f18eaed3e0a8bed5938b110ff5f6e3679556"
+    },
+    "300": {
+      "population": 86,
+      "hash": "87357782db16f34b25a0c25851bad7c8e1e4bcd2ad4dfe2b22f9840d90f8c77d"
+    },
+    "450": {
+      "population": 101,
+      "hash": "55c17afe562d4a15b6df38a27c078c96eb76de39eaf3a6ab10474491583ec67e"
+    },
+    "600": {
+      "population": 106,
+      "hash": "013ae1fca26123f07da1360b95329bd275ee3d51e30e7da39f5bf524fd64d1a6"
+    },
+    "1000": {
+      "population": 113,
+      "hash": "e35a101f3df2f761d79826a55818d33bdf94c21d9373f2e6b0d61f47f07c454b"
+    },
+    "2000": {
+      "population": 123,
+      "hash": "090d8771760fb1873f9c1ef8f00dec2e5277fc6388021bb531a14b3cad54d653"
+    },
+    "4000": {
+      "population": 113,
+      "hash": "c0cda6fcceb0c6f9517b17d4737b63dc044ae182fa0b1d9654d5dbd6f0e4a3f4"
+    }
+  },
+  "reference": {
+    "tool": "python-lifelib 2.5.6",
+    "method": "infinite plane, clipped to the board rectangle after every generation"
+  }
+}

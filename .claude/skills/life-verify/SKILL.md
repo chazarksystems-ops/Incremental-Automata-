@@ -35,10 +35,13 @@ proof.**
    - Restoring a snapshot and re-running ⇒ same hash sequence.
    - `stepLife` does not mutate its input (compare input hash before/after).
 5. **Independent reference (when a hash changes or a new fixture is added).**
-   Export the starting RLE, run it in Golly (B3/S23, bounded plane matching our
-   board size, or a board large enough that edges are irrelevant) to the same
-   generation, and record the resulting RLE/hash in the fixture with the Golly
-   version. If Golly is unavailable, say so explicitly; do not invent a reference.
+   Fixture specs live in `tests/fixtures/core/*.json`. Expectations come from
+   python-lifelib, *not* from our engine:
+   `pip install -r scripts/validate-fixtures/requirements.txt` (venv; needs g++),
+   then `python3 scripts/validate-fixtures/reference_lifelib.py --check`
+   (`--write` only when adding a new spec). Golly (bounded plane of the same
+   size) is an optional second cross-check; record its version if used. If no
+   reference can run, say so explicitly; do not invent a reference.
 6. **On failure:** save the minimal reproducing RLE + generation into
    `tests/fixtures/failures/` with a one-line description, and add a failing
    test before fixing.

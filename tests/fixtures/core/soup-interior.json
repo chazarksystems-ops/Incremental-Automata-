@@ -1,0 +1,68 @@
+{
+  "id": "soup-interior",
+  "description": "Seeded random soup well inside the board (rule stress test).",
+  "board": {
+    "width": 96,
+    "height": 96
+  },
+  "initial": [
+    {
+      "rle": "x = 32, y = 32, rule = B3/S23\nobbobbbboobbbobbobboobbboboobboo$\noboobbbobboobbbbbbobbbbboobbobbb$\nobbbbbboobbbbobbbbbobbbbobbobbbb$\nbbbbobbobboobbbbooobbbbbobbooobo$\noboooboobbobobboobbobbooobobbbob$\nbbobbboboobbobobbboobobbbobbbbbo$\nobboobobobbooobboobbbobbbboboobo$\nbbbooobbbbobooobbbobbbbooobbbbob$\nbobooboobbooobobbbbooboboobobboo$\nbbboobbbbboboooobbbbbbooobboobbb$\nooooboobobbbobbobobbboobboboboob$\nbbbbbobobboobbbbbbbooobbbooooobb$\nbboobbbbbbobbobbbboboobbobbobbob$\nbbbbbbooobbobbobobobbbobbobbbbbb$\nbbbbooobbobboooboobobbboobobobbb$\nbbbbbbboobobbbbbobbobobobbobbbbb$\nbooobbbbbbbbbboobboobbbbbbbbbbbb$\nbbbbbbbbbboobbbobbbobbbobobbbbbb$\nooboobbobbobbbobobobboobbbobbobb$\nbobobbbbboboobobobboobbooobboobb$\nbbobobobbboobbbobobbbobbobbbbbbo$\nboobobobbboobooooobbbbbbbbboobbo$\nbbboobobbbbbbbobobbboobbobobbobb$\nboboboobboobbboboboobbbobbbbbbbb$\nboooboobobboooobbbobooobbbbbbbbb$\nobbbbbbobbbbbboobbbobboobooobboo$\nbboboobbobbbbbbbbbbbboobbbbbbbbo$\nbboobooobbbbbbbbbbbboobbbbobbbbo$\nbbbbbbbbbbobboboobooobbobobbbbbb$\nbbbboobooobbbbbobbbbobbobbbooobb$\nbbbobbobbobobbobbbbobbbobobobbbb$\nobbbboobboobbbbbobobooobobobbboo!",
+      "x": 32,
+      "y": 32
+    }
+  ],
+  "checkpoints": [
+    0,
+    1,
+    2,
+    5,
+    10,
+    50,
+    100,
+    250,
+    500
+  ],
+  "expected": {
+    "0": {
+      "population": 364,
+      "hash": "79ea467dd1f6d468430ef8e8ed566302498e7381714c33c48a4256d872834bb6"
+    },
+    "1": {
+      "population": 394,
+      "hash": "da98ee9a6ee6b2d6503e2e5a6cca151ce63b10b91d7b80407a8d640c0eb1b61f"
+    },
+    "2": {
+      "population": 327,
+      "hash": "0f4f44f040206e893cf7f35177725375ac8e892ed3d46e81cd7d03656da915f2"
+    },
+    "5": {
+      "population": 295,
+      "hash": "a5d78d0ef645e361ef3ca74b2c35c61a9efb3b3f4febcf5a2061f8c260151213"
+    },
+    "10": {
+      "population": 219,
+      "hash": "9eae9ca5bf18f494f699d50d03ccaebfbb99ba7a7f91cd9b6c05e269c0ba6050"
+    },
+    "50": {
+      "population": 227,
+      "hash": "492a65253216cc52677e35431da78d6deddbaa6288918dae17006f25c87f033c"
+    },
+    "100": {
+      "population": 252,
+      "hash": "791ad55766ca55f005bfc911711cca4fd3fa2ffa3f62f1233b7c4b541ffcebee"
+    },
+    "250": {
+      "population": 134,
+      "hash": "b81fa336a5ccc8d5d50534b7f3c0e12e2e3ca0075f843acd2da8c85874533999"
+    },
+    "500": {
+      "population": 262,
+      "hash": "fb0a519250acbbb020d6cade2098599e0d12aac07751efb517481d12ba2ada5d"
+    }
+  },
+  "reference": {
+    "tool": "python-lifelib 2.5.6",
+    "method": "infinite plane, clipped to the board rectangle after every generation"
+  }
+}

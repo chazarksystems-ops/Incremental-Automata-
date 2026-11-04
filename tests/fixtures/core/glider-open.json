@@ -1,0 +1,58 @@
+{
+  "id": "glider-open",
+  "description": "Glider in open space: 4 phases then translation.",
+  "board": {
+    "width": 32,
+    "height": 32
+  },
+  "initial": [
+    {
+      "file": "src/patterns/rle/glider.rle",
+      "x": 4,
+      "y": 4
+    }
+  ],
+  "checkpoints": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    40,
+    80
+  ],
+  "expected": {
+    "0": {
+      "population": 5,
+      "hash": "cd24e359fa7917f2d3ca39c84d5957845b0fca516624e1bd80755d32224319d9"
+    },
+    "1": {
+      "population": 5,
+      "hash": "5d5a3ae238d104a8329082b05a8c24ee41b7ff371aa0ffaa91ce8e7fb574c7c0"
+    },
+    "2": {
+      "population": 5,
+      "hash": "9329ae68b54ff2e7aedfeb4af36b3d513b1c51d2510bf2785d887b36a163b2ae"
+    },
+    "3": {
+      "population": 5,
+      "hash": "03f11cf432bfab5a9eda0d41c6e3dde504db0cf72ca24adcf58376822cb770d5"
+    },
+    "4": {
+      "population": 5,
+      "hash": "ae49126da380b07df930c2529622130dd1220115f52c1ddabd927c537a313b36"
+    },
+    "40": {
+      "population": 5,
+      "hash": "a6a2c2b53278092c369eea305837a801b75adc15f0c54cad2ee2a1b8a5aaabf5"
+    },
+    "80": {
+      "population": 5,
+      "hash": "f175efae5286e79f7911eb2f8d11e67ddd654cfd098dfdcf71bbee2feb484e85"
+    }
+  },
+  "reference": {
+    "tool": "python-lifelib 2.5.6",
+    "method": "infinite plane, clipped to the board rectangle after every generation"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "glider-edge-corner",
+  "description": "Glider driven into the bottom-right corner of a dead-boundary board; no wrapping.",
+  "board": {
+    "width": 16,
+    "height": 16
+  },
+  "initial": [
+    {
+      "file": "src/patterns/rle/glider.rle",
+      "x": 8,
+      "y": 8
+    }
+  ],
+  "checkpoints": [
+    0,
+    10,
+    20,
+    30,
+    40,
+    100
+  ],
+  "expected": {
+    "0": {
+      "population": 5,
+      "hash": "d9432eae393318a14b2f6f0945b85f48466543f2edd234e2e4c94e7d40a15e18"
+    },
+    "10": {
+      "population": 5,
+      "hash": "6420f2c4300b4a09647d26f7d0c5bb75ca78dd37ba44217462228fc43317cf2c"
+    },
+    "20": {
+      "population": 5,
+      "hash": "439e385f5470fcfe59f47925aba5f545d6e25f0a1b2d873223bf091559b6600c"
+    },
+    "30": {
+      "population": 4,
+      "hash": "63283f09b3d29a783fe27714becbf95cc25652394c952b40040cc2f3779e278c"
+    },
+    "40": {
+      "population": 4,
+      "hash": "026c726db0a85a4b33987c8fcfc2168037596a308f9ae5b5829a61cba74f42a9"
+    },
+    "100": {
+      "population": 4,
+      "hash": "5ce68ed843c3f8ea1486886b12038513b494fe280b638fe4a11fc6039100b560"
+    }
+  },
+  "reference": {
+    "tool": "python-lifelib 2.5.6",
+    "method": "infinite plane, clipped to the board rectangle after every generation"
+  }
+}

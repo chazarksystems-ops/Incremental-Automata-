@@ -1,0 +1,63 @@
+{
+  "id": "eater-consumes-glider",
+  "description": "Eater 1 consumes a SE glider placed at (-8,-8) relative to it and recovers.",
+  "board": {
+    "width": 40,
+    "height": 40
+  },
+  "initial": [
+    {
+      "file": "src/patterns/rle/eater-1.rle",
+      "x": 20,
+      "y": 20
+    },
+    {
+      "file": "src/patterns/rle/glider.rle",
+      "x": 12,
+      "y": 12
+    }
+  ],
+  "checkpoints": [
+    0,
+    10,
+    20,
+    30,
+    40,
+    60,
+    100
+  ],
+  "expected": {
+    "0": {
+      "population": 12,
+      "hash": "b5d401412322cfff9b07e29355b0acb6ab60f7c2ad271810e7f79b9e29266594"
+    },
+    "10": {
+      "population": 12,
+      "hash": "256c14484a3a2e23a924ca8d68bf6f01a5197222d07da20f595948cfdb12d559"
+    },
+    "20": {
+      "population": 10,
+      "hash": "0ae0358b7bbc690628e3fd26e29c4ea6d3b082dc4812906006f6b5819b79c9ef"
+    },
+    "30": {
+      "population": 7,
+      "hash": "f2019847462965a65781686b71730de508077a0576c38950d273665b54bb8745"
+    },
+    "40": {
+      "population": 7,
+      "hash": "184def058a844260cc833cd79300697f2f859665882823124b19106023f1b90c"
+    },
+    "60": {
+      "population": 7,
+      "hash": "dd2d6fb80514feb48f8735241cd5154ebe37050026f78d5aa3587e5a476b4680"
+    },
+    "100": {
+      "population": 7,
+      "hash": "cbce4c52b57016971035e52fcfcf00e738fa845b94f43006ada0653d6d83aa64"
+    }
+  },
+  "reference": {
+    "tool": "python-lifelib 2.5.6",
+    "method": "infinite plane, clipped to the board rectangle after every generation"
+  }
+}

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Incremental Automata</title>
+    <link rel="stylesheet" href="/src/ui/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1 class="brand">Incremental Automata <span class="rule" title="Conway's Game of Life rule">B3/S23</span></h1>
+      <div class="controls" role="toolbar" aria-label="Simulation controls">
+        <button id="play" data-testid="play" class="primary" aria-keyshortcuts="Space">Play</button>
+        <button id="step" data-testid="step" aria-keyshortcuts="N" title="Advance one generation (N)">Step</button>
+        <label class="speed">
+          <span>Speed</span>
+          <input id="speed" data-testid="speed" type="range" min="0" max="9" step="1" value="4" aria-describedby="speed-value" />
+          <output id="speed-value" data-testid="speed-value">15 gen/s</output>
+        </label>
+        <button id="reset" data-testid="reset" title="Back to the chamber's starting layout">Reset</button>
+        <button id="clear" data-testid="clear" title="Remove every live cell">Clear</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="stage" aria-label="Chamber">
+        <canvas id="board" data-testid="board" aria-label="Life board"></canvas>
+        <div class="zoom" role="group" aria-label="View">
+          <button id="zoom-in" data-testid="zoom-in" aria-label="Zoom in">+</button>
+          <button id="zoom-out" data-testid="zoom-out" aria-label="Zoom out">−</button>
+          <button id="fit" data-testid="fit" aria-keyshortcuts="F" title="Fit board (F)">Fit</button>
+        </div>
+        <div id="message" data-testid="message" class="message" role="status" aria-live="polite"></div>
+      </section>
+
+      <aside class="panel">
+        <section>
+          <h2>Status</h2>
+          <dl class="stats">
+            <dt>Generation</dt><dd id="generation" data-testid="generation">0</dd>
+            <dt>Population</dt><dd id="population" data-testid="population">0</dd>
+            <dt>Actual rate</dt><dd id="rate" data-testid="rate">0 gen/s</dd>
+            <dt>Board</dt><dd id="board-size" data-testid="board-size">128 × 128</dd>
+            <dt>Cursor</dt><dd id="cursor" data-testid="cursor">–</dd>
+          </dl>
+        </section>
+
+        <section>
+          <h2>Tool</h2>
+          <div class="segmented" role="radiogroup" aria-label="Tool">
+            <button role="radio" data-tool="draw" data-testid="tool-draw" aria-checked="true">Draw</button>
+            <button role="radio" data-tool="pan" data-testid="tool-pan" aria-checked="false">Pan</button>
+            <button role="radio" data-tool="place" data-testid="tool-place" aria-checked="false">Place</button>
+          </div>
+          <p class="hint" id="tool-hint">Click or drag to toggle cells. Right-drag pans, wheel zooms.</p>
+        </section>
+
+        <section>
+          <h2>Blueprints</h2>
+          <div id="palette" class="palette" data-testid="palette"></div>
+          <div class="orient">
+            <button id="rotate" data-testid="rotate" aria-keyshortcuts="R">Rotate (R)</button>
+            <button id="mirror" data-testid="mirror" aria-keyshortcuts="M">Mirror (M)</button>
+            <span id="orientation" data-testid="orientation">rot0</span>
+          </div>
+        </section>
+
+        <section>
+          <h2>RLE</h2>
+          <div class="row">
+            <button id="import-open" data-testid="import-open">Import…</button>
+            <button id="export" data-testid="export">Export board</button>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <dialog id="rle-dialog" data-testid="rle-dialog">
+      <form method="dialog" class="rle-form">
+        <h2 id="rle-title">Import RLE</h2>
+        <textarea id="rle-text" data-testid="rle-text" rows="12" spellcheck="false" aria-labelledby="rle-title"></textarea>
+        <p id="rle-error" class="error" data-testid="rle-error" role="alert"></p>
+        <div class="row end">
+          <button value="cancel" formnovalidate>Close</button>
+          <button id="rle-confirm" data-testid="rle-confirm" class="primary" value="default">Use as blueprint</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
