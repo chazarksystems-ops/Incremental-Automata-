@@ -11,6 +11,10 @@ export interface Theme {
   ghostBad: string;
   ghostCell: string;
   hover: string;
+  machine: string;
+  machineHighlight: string;
+  lanePredicted: string;
+  loss: string;
   gate: string;
   gateFlash: string;
   zone: string;
@@ -31,6 +35,26 @@ export interface CollectorOverlay {
   tracks: Array<{ x: number; y: number }>;
   /** 1 right after a payout, fading to 0. */
   flash: number;
+  selected?: boolean;
+  /** Placement preview (not yet built). */
+  ghost?: boolean;
+}
+
+export interface GunOverlay {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  highlight: boolean;
+}
+
+/** Predicted stream lane: from a phase-0 anchor along the heading to the board edge (dashed). */
+export interface LaneOverlay {
+  ax: number;
+  ay: number;
+  hx: number;
+  hy: number;
+  strong: boolean;
 }
 
 export interface Overlay {
@@ -38,6 +62,10 @@ export interface Overlay {
   ghost?: { grid: Grid; x: number; y: number; valid: boolean };
   hoverCell?: { x: number; y: number };
   collectors?: CollectorOverlay[];
+  guns?: GunOverlay[];
+  lanes?: LaneOverlay[];
+  /** Recent losses at the board edge; alpha fades with age. */
+  lossMarks?: Array<{ x: number; y: number; alpha: number }>;
 }
 
 /**
@@ -154,7 +182,40 @@ export class BoardRenderer {
       ctx.strokeRect(ox + overlay.hoverCell.x * z, oy + overlay.hoverCell.y * z, z, z);
     }
 
+    // Machines and assistive overlays (game layer only)
+    for (const gOv of overlay.guns ?? []) {
+      ctx.strokeStyle = gOv.highlight ? theme.machineHighlight : theme.machine;
+      ctx.lineWidth = Math.max(1, (gOv.highlight ? 2 : 1) * dpr);
+      ctx.setLineDash([4 * dpr, 3 * dpr]);
+      ctx.strokeRect(ox + gOv.x * z, oy + gOv.y * z, gOv.width * z, gOv.height * z);
+      ctx.setLineDash([]);
+    }
+    for (const l of overlay.lanes ?? []) {
+      const cx = l.ax + 1.5, cy = l.ay + 1.5;
+      const tx = l.hx > 0 ? world.width - cx : cx;
+      const ty = l.hy > 0 ? world.height - cy : cy;
+      const t = Math.max(0, Math.min(tx, ty));
+      ctx.strokeStyle = theme.lanePredicted;
+      ctx.globalAlpha = l.strong ? 1 : 0.45;
+      ctx.lineWidth = Math.max(1, 1.5 * dpr);
+      ctx.setLineDash([6 * dpr, 6 * dpr]);
+      ctx.beginPath();
+      ctx.moveTo(ox + cx * z, oy + cy * z);
+      ctx.lineTo(ox + (cx + l.hx * t) * z, oy + (cy + l.hy * t) * z);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
     for (const c of overlay.collectors ?? []) this.drawCollector(c, ox, oy, z, dpr);
+    for (const m of overlay.lossMarks ?? []) {
+      ctx.strokeStyle = theme.loss;
+      ctx.globalAlpha = m.alpha;
+      ctx.lineWidth = Math.max(1.5 * dpr, z * 0.3);
+      ctx.beginPath();
+      ctx.arc(ox + (m.x + 1.5) * z, oy + (m.y + 1.5) * z, Math.max(6 * dpr, 3 * z), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
 
     // Board edge — projectiles crossing it are lost.
     ctx.strokeStyle = theme.edge;
@@ -165,6 +226,7 @@ export class BoardRenderer {
   private drawCollector(c: CollectorOverlay, ox: number, oy: number, z: number, dpr: number): void {
     const { ctx, theme } = this;
     const { at } = collectorGeometry(c);
+    ctx.globalAlpha = c.ghost ? 0.6 : c.selected === false ? 0.55 : 1;
     const S = (p: { x: number; y: number }) => [ox + p.x * z, oy + p.y * z] as const;
 
     // Observation zone
@@ -214,6 +276,7 @@ export class BoardRenderer {
     ctx.lineTo(...S(at(-1.2, 4.4)));
     ctx.stroke();
     ctx.lineCap = 'butt';
+    ctx.globalAlpha = 1;
   }
 }
 

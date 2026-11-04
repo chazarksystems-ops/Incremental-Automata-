@@ -5,11 +5,12 @@ A browser-first incremental automation game where real Conway's Game of Life
 energy, research and progression. Every claimed machine actually works under
 the automaton's rules.
 
-**Status:** Phase 2 (first genuine factory) complete: a Gosper gun, a movable directional collector that pays one
-energy per real glider crossing, and diagnostics that explain misses. See
-[`docs/PHASE2_REPORT.md`](docs/PHASE2_REPORT.md) and [`docs/PHASE1_REPORT.md`](docs/PHASE1_REPORT.md).
+**Status:** Phase 3 (incremental progression) complete. Earn energy from real glider passages, spend it on more
+guns, collectors, orientation tools and a bigger chamber, and work through 7 goals. Autosaves in the browser.
+Sandbox mode keeps the free editor. See [`docs/PHASE3_REPORT.md`](docs/PHASE3_REPORT.md) (and Phase
+[1](docs/PHASE1_REPORT.md), [2](docs/PHASE2_REPORT.md)).
 
-![Collector on the glider stream](docs/screenshots/2026-11-04-phase2/3-collecting.png)
+![Two guns, two collectors, no losses](docs/screenshots/2026-11-04-phase3/4-two-streams-no-losses.png)
 
 ## Run
 
@@ -21,10 +22,10 @@ npm run test:e2e       # Playwright (Chromium)
 npm run bench          # add -- --browser for render timing
 ```
 
-Controls: Space play/pause · N step · C collector tool · R rotate · M mirror · F fit · Esc draw tool · wheel zoom · right-drag pan.
+Controls: Space play/pause · N step · C move collector · R rotate (gun with Orientation tools / new collector's direction) · M mirror · F fit · Esc select tool · wheel zoom · drag empty space or right-drag to pan.
 
 ## Docs
 
 - Plan and phase gates: [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md)
-- Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Tests: [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) · Provenance: [`docs/LICENSE_PROVENANCE.md`](docs/LICENSE_PROVENANCE.md)
+- Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Tests: [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) · Experiments: [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) · Provenance: [`docs/LICENSE_PROVENANCE.md`](docs/LICENSE_PROVENANCE.md)
 - Agent tooling (skills, MCP): [`docs/DEV_TOOLING.md`](docs/DEV_TOOLING.md) · Agent rules: [`CLAUDE.md`](CLAUDE.md)

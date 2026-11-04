@@ -1,4 +1,4 @@
-# Architecture (Phases 1–2)
+# Architecture (Phases 1–3)
 
 ```text
 UI (src/ui)  ──commands──▶  Simulation (src/game/simulation.ts) ◀── GenerationClock (src/game/clock.ts)
@@ -53,3 +53,13 @@ Renderer (src/render): camera math + Canvas 2D board renderer (read-only)
 - `Factory.apply(cmd)` handles cell commands and collector moves/rotations, logged with their generation. `replayFactory(snapshot, log, gen)` reproduces the receipts exactly.
 - `GameSnapshot { version, rule, generation, world: {w, h, rle}, detectors (incl. in-flight tracks), economy }` is JSON-serialisable. `Factory.fromSnapshot` resumes bit-for-bit.
 - `DetectedSignal.passageId = heading:L<lane>:T<2·progress + phase − generation>` identifies a glider's trajectory independent of gate position. The ledger rejects duplicates.
+
+## Phase 3 additions
+
+- **Modes.** Factory: cells change only through machines (`build-gun`, `remove-machine`) and upgrades (`buy-upgrade` expansion). Sandbox: a separate `Factory` with `sandbox: true` (free editing, zero prices, never saved).
+- **Machines.** `Machine { id, kind, x, y, transform, width, height, paid, builtAt }`. Guns are stamped through `Simulation` commands. Removal uses `clear-rect`. Expansion uses `resize` (pure `resizeWorld`, grow-only).
+- **Per-generation pipeline in `Factory.step`.** `stepLife` → each detector → ledger (passage dedupe, loss retraction) → edge-loss monitor → receipt compaction every 500 generations → goal latching. All of it is deterministic, so batch size never changes results.
+- **Ledger.** `EconomyState { energy, receipts (recent), archived {income, count}, entries (purchase/refund) }`. `auditEconomy` recomputes the balance and checks it is ≥ 0.
+- **Snapshot v2 / save.** `GameSnapshot` holds world RLE, machines, detectors (with in-flight tracks), economy, losses, unlocks, goals, `nextId`, `lastBuildGeneration`. `src/game/save.ts` wraps it in a versioned envelope with validation. Corrupt saves are backed up, never crash the game.
+- **Shared glider scan.** `src/detectors/scan.ts` (`findIsolatedGliders`, `passageId`) is used by collectors and the loss monitor. A sliding-window fast path is kept equal to a naive reference by a test.
+- **Assistive overlay only.** `gunOutput` measures each orientation's stream lane by running the gun. The renderer draws it dashed; it never affects cells.

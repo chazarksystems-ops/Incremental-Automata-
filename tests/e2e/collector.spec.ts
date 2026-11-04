@@ -74,19 +74,21 @@ test('step-by-step and fast play earn identical receipts', async ({ page }) => {
   const fast = await page.evaluate(() => window.__ia.receipts());
   expect(fast.length).toBeGreaterThan(0);
 
+  page.once('dialog', (d) => void d.accept());
   await page.getByTestId('reset').click();
   await moveCollectorOnLane(page);
-  await page.getByTestId('tool-draw').click();
+  await page.getByTestId('tool-select').click();
   for (let i = 0; i < g; i++) await page.keyboard.press('n');
   await expect(page.getByTestId('generation')).toHaveText(String(g));
   expect(await page.evaluate(() => window.__ia.receipts())).toEqual(fast);
 });
 
-test('reset restores energy and the collector', async ({ page }) => {
+test('New game (confirmed) restores energy and the collector', async ({ page }) => {
   await open(page);
   await moveCollectorOnLane(page);
   await runUntil(page, 400);
   expect(await page.evaluate(() => window.__ia.energy())).toBeGreaterThan(0);
+  page.once('dialog', (d) => void d.accept());
   await page.getByTestId('reset').click();
   await expect(page.getByTestId('energy')).toHaveText('0');
   expect((await page.evaluate(() => window.__ia.collector())).config).toMatchObject({ x: 72, y: 64, heading: 'SE' });

@@ -14,16 +14,58 @@ export interface DetectorParams {
   confirmGenerations: number;
 }
 
+export type UpgradeId = 'orientation' | 'expansion';
+export type MachineKind = 'gun' | 'collector';
+
+export interface UpgradeDef {
+  id: UpgradeId;
+  name: string;
+  description: string;
+  cost: number;
+}
+
 export interface GameConfig {
   detector: DetectorParams;
   /** Energy awarded per confirmed, unique glider passage. */
   rewardPerGlider: number;
-  /** Window (generations) for the displayed production rate. */
+  /** Window (generations) for displayed production and loss rates. */
   rateWindow: number;
+  /** Price of the next machine of a kind, indexed by how many of that kind are owned now. */
+  machineCosts: Record<MachineKind, readonly number[]>;
+  upgrades: readonly UpgradeDef[];
+  chamber: { initialSize: number; expandedSize: number };
+  /** A glider within this many cells of the edge it is heading for counts as lost (if never collected). */
+  lossBand: number;
 }
 
 export const DEFAULT_CONFIG: GameConfig = {
   detector: { gateHalfWidth: 1, observeHalfWidth: 10, observeDepth: 12, confirmGenerations: 4 },
   rewardPerGlider: 1,
   rateWindow: 300,
+  machineCosts: {
+    gun: [0, 10, 25, 50, 100], // owning 1 (the starter) ⇒ next costs 10
+    collector: [0, 15, 30, 60],
+  },
+  upgrades: [
+    {
+      id: 'orientation',
+      name: 'Orientation tools',
+      description: 'Rotate and mirror gun blueprints before placing them.',
+      cost: 20,
+    },
+    {
+      id: 'expansion',
+      name: 'Chamber expansion',
+      description: 'Grow the chamber from 128×128 to 192×192. Anything resting against the old right/bottom edge is no longer held by it.',
+      cost: 40,
+    },
+  ],
+  chamber: { initialSize: 128, expandedSize: 192 },
+  lossBand: 4,
 };
+
+export function upgradeDef(config: GameConfig, id: UpgradeId): UpgradeDef {
+  const u = config.upgrades.find((x) => x.id === id);
+  if (!u) throw new Error(`Unknown upgrade ${id}`);
+  return u;
+}

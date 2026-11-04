@@ -46,3 +46,14 @@ export function show(g: Grid): string {
   }
   return rows.join('\n');
 }
+
+import { Factory, type Blueprints, type FactoryInit } from '../src/game/factory';
+import type { DetectorConfig } from '../src/detectors/detector';
+import { DEFAULT_CONFIG, type GameConfig } from '../src/game/config';
+
+export const BLUEPRINTS: Blueprints = { get gun() { return loadPattern('gosper-glider-gun'); } };
+
+/** Factory over a bare world with the given collectors (Phase 2-style tests). */
+export function factoryOf(world: WorldState, detectors: DetectorConfig[] = [], init: Partial<FactoryInit> = {}, config: GameConfig = DEFAULT_CONFIG): Factory {
+  return new Factory({ world, detectors, ...init }, BLUEPRINTS, config);
+}

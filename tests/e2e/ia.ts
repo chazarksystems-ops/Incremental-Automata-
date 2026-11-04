@@ -11,6 +11,13 @@ export interface IA {
   energy(): number;
   receipts(): Array<{ passageId: string; generation: number; detectorId: string; amount: number }>;
   collector(): { config: { id: string; x: number; y: number; heading: string }; nearMisses: number };
+  collectors(): Array<{ config: { id: string; x: number; y: number; heading: string } }>;
+  machines(): Array<{ id: string; kind: string; x: number; y: number; paid: number }>;
+  goals(): string[];
+  losses(): number;
+  unlocks(): string[];
+  mode(): string;
+  boardSize(): { width: number; height: number };
 }
 
 declare global {

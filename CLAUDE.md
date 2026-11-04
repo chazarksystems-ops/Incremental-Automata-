@@ -6,7 +6,7 @@ collectors, currency, research and progression.
 
 - Requirements and phase gates: `docs/MASTER_PLAN.md` (source of truth for scope).
 - Development tooling decisions (skills, MCP, hooks): `docs/DEV_TOOLING.md`.
-- Current scope: Phases 1–2 delivered. Do not start a later phase without an
+- Current scope: Phases 1–3 delivered. Do not start a later phase without an
   explicit go decision recorded against that phase's gate.
 
 ## Project invariants (apply to every task and every skill)
@@ -44,7 +44,8 @@ Playwright Test (e2e, pinned to 1.63.0 to match the preinstalled Chromium), GitH
 Independent reference oracle: python-lifelib (`scripts/validate-fixtures/reference_lifelib.py`);
 Golly is an optional external cross-check. Neither is a runtime dependency.
 
-Status: Phase 1 and Phase 2 complete (`docs/PHASE1_REPORT.md`, `docs/PHASE2_REPORT.md`). Next: Phase 3.
+Status: Phases 1–3 complete (`docs/PHASE1_REPORT.md` … `docs/PHASE3_REPORT.md`). Next: Phase 4.
+Experiments (incl. failed ones) are logged in `docs/EXPERIMENTS.md`; scripts live in `scripts/experiments/`.
 
 Scripts (keep these names stable — the skills rely on them):
 
@@ -62,7 +63,7 @@ Scripts (keep these names stable — the skills rely on them):
 If a script does not exist yet, say so in the report rather than silently skipping it.
 
 Layout: `src/core` (pure engine) · `src/patterns` (RLE + manifest) · `src/detectors` (glider templates, tracker)
-· `src/economy` (ledger) · `src/game` (clock, simulation, factory, config) · `src/render` · `src/ui` · `src/scenarios` · `tests/{core,game,patterns,render,e2e,fixtures}`. See `docs/ARCHITECTURE.md`.
+· `src/economy` (ledger) · `src/game` (clock, simulation, factory, config, goals, losses, save) · `src/render` · `src/ui` · `src/scenarios` · `tests/{core,game,patterns,render,e2e,fixtures}`. See `docs/ARCHITECTURE.md`.
 
 ## Skills in this repo (`.claude/skills/`)
 

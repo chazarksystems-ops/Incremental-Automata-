@@ -1,6 +1,7 @@
-import { getCell, type WorldState } from '../core/world';
+import type { WorldState } from '../core/world';
 import type { DetectorParams } from '../game/config';
-import { GLIDER_TEMPLATES, HEADING_VECTORS, TEMPLATE_BY_MASK, type Heading } from './templates';
+import { findIsolatedGliders, passageId } from './scan';
+import { GLIDER_TEMPLATES, HEADING_VECTORS, type Heading } from './templates';
 
 /**
  * Directional glider detector — a read-only game-layer sensor.
@@ -95,40 +96,13 @@ export function observe(world: WorldState, c: DetectorConfig, p: DetectorParams)
   const gate = gateCoordinates(c);
   const half = Math.ceil((p.observeDepth + p.observeHalfWidth) / 2) + 3;
   const out: Observation[] = [];
-  for (let y = c.y - half; y <= c.y + half; y++) {
-    for (let x = c.x - half; x <= c.x + half; x++) {
-      let mask = 0;
-      let n = 0;
-      for (let i = 0; i < 9; i++) {
-        if (getCell(world, x + (i % 3), y + ((i / 3) | 0))) {
-          mask |= 1 << i;
-          if (++n > 5) break;
-        }
-      }
-      if (n !== 5) continue;
-      const t = TEMPLATE_BY_MASK.get(mask);
-      if (!t || t.heading !== c.heading) continue;
-      if (!ringEmpty(world, x, y)) continue;
-      const ax = x + t.anchorDx;
-      const ay = y + t.anchorDy;
-      const prog = hx * ax + hy * ay - gate.progress;
-      const lat = hx * ax - hy * ay - gate.lateral;
-      if (Math.abs(lat) > p.observeHalfWidth || Math.abs(prog) > p.observeDepth) continue;
-      out.push({ phase: t.phase, ax, ay });
-    }
+  for (const g of findIsolatedGliders(world, c.x - half, c.y - half, c.x + half, c.y + half, c.heading)) {
+    const prog = hx * g.ax + hy * g.ay - gate.progress;
+    const lat = hx * g.ax - hy * g.ay - gate.lateral;
+    if (Math.abs(lat) > p.observeHalfWidth || Math.abs(prog) > p.observeDepth) continue;
+    out.push({ phase: g.phase, ax: g.ax, ay: g.ay });
   }
   return out;
-}
-
-/** The 16 cells surrounding the 3×3 box at (x, y) must all be dead. */
-function ringEmpty(world: WorldState, x: number, y: number): boolean {
-  for (let i = -1; i <= 3; i++) {
-    if (getCell(world, x + i, y - 1) || getCell(world, x + i, y + 3)) return false;
-  }
-  for (let j = 0; j <= 2; j++) {
-    if (getCell(world, x - 1, y + j) || getCell(world, x + 3, y + j)) return false;
-  }
-  return true;
 }
 
 export interface DetectorUpdate {
@@ -178,16 +152,12 @@ export function updateDetector(state: DetectorState, world: WorldState, p: Detec
       track.resolved = true;
       const offset = track.crossedOffset!;
       if (Math.abs(offset) <= p.gateHalfWidth) {
-        // Timing invariant: 2*progress + phase − generation is constant for one glider.
-        const absProg = hx * track.ax + hy * track.ay;
-        const absLat = hx * track.ax - hy * track.ay;
-        const timing = 2 * absProg + track.phase - world.generation;
         signals.push({
           generation: world.generation,
           crossingGeneration: track.crossedAt,
           detectorId: c.id,
           heading: c.heading,
-          passageId: `${c.heading}:L${absLat}:T${timing}`,
+          passageId: passageId(c.heading, track.ax, track.ay, track.phase, world.generation),
           lateralOffset: offset,
         });
         collected++;

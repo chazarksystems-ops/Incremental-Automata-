@@ -109,3 +109,25 @@ export function gridsEqual(a: Grid, b: Grid): boolean {
   for (let i = 0; i < a.cells.length; i++) if (a.cells[i] !== b.cells[i]) return false;
   return true;
 }
+
+/**
+ * New world of size `width × height` keeping every cell at the same
+ * coordinates (the board grows right/down). Shrinking is not allowed:
+ * the game layer must never delete live cells implicitly.
+ */
+export function resizeWorld(w: WorldState, width: number, height: number): WorldState {
+  assertDimensions(width, height);
+  if (width < w.width || height < w.height) throw new RangeError('resizeWorld cannot shrink the board');
+  const cells = new Uint8Array(width * height);
+  for (let y = 0; y < w.height; y++) cells.set(w.cells.subarray(y * w.width, (y + 1) * w.width), y * width);
+  return { width, height, generation: w.generation, cells };
+}
+
+/** New world with every cell inside `box` (clipped to the board) set dead. */
+export function clearRect(w: WorldState, box: BoundingBox): WorldState {
+  const cells = w.cells.slice();
+  const x0 = Math.max(0, box.x), y0 = Math.max(0, box.y);
+  const x1 = Math.min(w.width, box.x + box.width), y1 = Math.min(w.height, box.y + box.height);
+  for (let y = y0; y < y1; y++) cells.fill(0, y * w.width + x0, y * w.width + Math.max(x0, x1));
+  return { ...w, cells };
+}

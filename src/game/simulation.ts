@@ -1,7 +1,7 @@
 import { stepLife } from '../core/life';
 import { stampGrid, type StampResult } from '../core/stamp';
 import type { Transform } from '../core/transform';
-import { createWorld, inBounds, withCell, type Grid, type WorldState } from '../core/world';
+import { clearRect, createWorld, inBounds, resizeWorld, withCell, type Grid, type WorldState } from '../core/world';
 
 /**
  * Player/editor commands. Every command is applied between generations
@@ -11,7 +11,9 @@ import { createWorld, inBounds, withCell, type Grid, type WorldState } from '../
 export type Command =
   | { type: 'set-cell'; x: number; y: number; alive: boolean }
   | { type: 'stamp'; patternId: string; grid: Grid; x: number; y: number; transform: Transform }
-  | { type: 'clear' };
+  | { type: 'clear' }
+  | { type: 'clear-rect'; x: number; y: number; width: number; height: number }
+  | { type: 'resize'; width: number; height: number };
 
 export type CommandResult =
   | { ok: true; warnings: string[] }
@@ -85,6 +87,11 @@ export function applyCommand(world: WorldState, command: Command): ApplyResult {
     }
     case 'clear':
       return { ok: true, world: createWorld(world.width, world.height, world.generation), warnings: [] };
+    case 'clear-rect':
+      return { ok: true, world: clearRect(world, command), warnings: [] };
+    case 'resize':
+      if (command.width < world.width || command.height < world.height) return { ok: false, message: 'The chamber cannot shrink' };
+      return { ok: true, world: resizeWorld(world, command.width, command.height), warnings: [] };
   }
 }
 

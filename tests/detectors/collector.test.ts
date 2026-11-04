@@ -7,7 +7,7 @@ import type { Heading } from '../../src/detectors/templates';
 import { auditEconomy } from '../../src/economy/ledger';
 import { Factory, replayFactory } from '../../src/game/factory';
 import { DEFAULT_COLLECTOR, ON_LANE_COLLECTOR_POSITION, defaultScenario } from '../../src/scenarios/default';
-import { board, loadPattern, rleGrid } from '../helpers';
+import { BLUEPRINTS, board, factoryOf, loadPattern, rleGrid } from '../helpers';
 
 const glider = loadPattern('glider'); // SE heading, phase 0, anchor = top-left
 const gun = loadPattern('gosper-glider-gun');
@@ -17,7 +17,7 @@ const gate = (x: number, y: number, heading: Heading = 'SE'): DetectorConfig => 
 function factory(items: Array<{ grid: Grid; x: number; y: number; transform?: Transform }>, det: DetectorConfig, size = 96, pre = 0) {
   let w: WorldState = board(size, size, items);
   if (pre) w = stepLifeN(w, pre);
-  return new Factory(w, [det]);
+  return factoryOf(w, [det]);
 }
 
 describe('collector — MASTER_PLAN §4 tests', () => {
@@ -81,7 +81,7 @@ describe('collector — MASTER_PLAN §4 tests', () => {
   });
 
   it('4. two consecutive gun gliders count as two, 30 generations apart', () => {
-    const f = new Factory(defaultScenario(gun), [{ ...DEFAULT_COLLECTOR, ...ON_LANE_COLLECTOR_POSITION }]);
+    const f = factoryOf(defaultScenario(gun), [{ ...DEFAULT_COLLECTOR, ...ON_LANE_COLLECTOR_POSITION }]);
     let arrivals: number[] = [];
     for (let g = 0; g < 600 && arrivals.length < 2; g++) arrivals = [...arrivals, ...f.step(1).receipts.map((r) => r.generation)];
     expect(arrivals).toHaveLength(2);
@@ -103,7 +103,7 @@ describe('collector — MASTER_PLAN §4 tests', () => {
     expect(far.detectors[0]!.nearMisses).toBe(0);
 
     // Default chamber: collector starts 6 lanes off the stream.
-    const f = new Factory(defaultScenario(gun), [DEFAULT_COLLECTOR]);
+    const f = factoryOf(defaultScenario(gun), [DEFAULT_COLLECTOR]);
     f.step(600);
     expect(f.economy.energy).toBe(0);
     const d = f.detectors[0]!;
@@ -117,40 +117,40 @@ describe('collector — MASTER_PLAN §4 tests', () => {
 
   it('6. restart from snapshot reproduces receipts exactly (incl. mid-flight tracks)', () => {
     const det = { ...DEFAULT_COLLECTOR, ...ON_LANE_COLLECTOR_POSITION };
-    const straight = new Factory(defaultScenario(gun), [det]);
+    const straight = factoryOf(defaultScenario(gun), [det]);
     straight.step(1000);
 
-    const a = new Factory(defaultScenario(gun), [det]);
+    const a = factoryOf(defaultScenario(gun), [det]);
     a.step(437); // gliders are mid-observation here
     expect(a.detectors[0]!.tracks.length).toBeGreaterThan(0);
     const snap = JSON.parse(JSON.stringify(a.snapshot()));
-    const b = Factory.fromSnapshot(snap);
+    const b = Factory.fromSnapshot(snap, BLUEPRINTS);
     b.step(563);
     expect(b.economy).toEqual(straight.economy);
     expect(b.detectors).toEqual(straight.detectors);
 
     // Command replay from the initial snapshot, including collector moves.
-    const c = new Factory(defaultScenario(gun), [DEFAULT_COLLECTOR]);
+    const c = factoryOf(defaultScenario(gun), [DEFAULT_COLLECTOR]);
     c.step(200);
     c.apply({ type: 'move-detector', id: 'collector-1', x: 78, y: 64 });
     c.step(300);
     c.apply({ type: 'set-cell', x: 120, y: 5, alive: true });
     c.apply({ type: 'move-detector', id: 'collector-1', x: 90, y: 76 });
     c.step(500);
-    const r = replayFactory(c.initialSnapshot, c.log, 1000);
+    const r = replayFactory(c.initialSnapshot, c.log, 1000, BLUEPRINTS);
     expect(r.economy).toEqual(c.economy);
     expect(r.snapshot()).toEqual(c.snapshot());
   });
 
   it('7. batched / fast stepping skips no arrivals', () => {
     const det = { ...DEFAULT_COLLECTOR, ...ON_LANE_COLLECTOR_POSITION };
-    const single = new Factory(defaultScenario(gun), [det]);
+    const single = factoryOf(defaultScenario(gun), [det]);
     for (let i = 0; i < 2000; i++) single.step(1);
 
-    const batched = new Factory(defaultScenario(gun), [det]);
+    const batched = factoryOf(defaultScenario(gun), [det]);
     batched.step(2000);
 
-    const chunked = new Factory(defaultScenario(gun), [det]);
+    const chunked = factoryOf(defaultScenario(gun), [det]);
     let seed = 9;
     while (chunked.generation < 2000) {
       seed = (seed * 16807) % 2147483647;
@@ -221,14 +221,14 @@ describe('collector — adversarial', () => {
   it('a glider that crosses but is destroyed before confirmation does not pay', () => {
     // Stamp a glider just before the gate and a block right behind the gate:
     // it crosses, then collides within the confirmation window.
-    const f = new Factory(board(96, 96, [{ grid: glider, x: 39, y: 39 }, { grid: loadPattern('block'), x: 43, y: 43 }]), [gate(40, 40)]);
+    const f = factoryOf(board(96, 96, [{ grid: glider, x: 39, y: 39 }, { grid: loadPattern('block'), x: 43, y: 43 }]), [gate(40, 40)]);
     f.step(200);
     expect(f.economy.receipts).toHaveLength(0);
   });
 
   it('the detector never changes the board', () => {
     const det = { ...DEFAULT_COLLECTOR, ...ON_LANE_COLLECTOR_POSITION };
-    const f = new Factory(defaultScenario(gun), [det]);
+    const f = factoryOf(defaultScenario(gun), [det]);
     f.step(1500);
     expect(f.world).toEqual(stepLifeN(defaultScenario(gun), 1500));
     expect(auditEconomy(f.economy)).toBe(true);

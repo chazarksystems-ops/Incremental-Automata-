@@ -11,12 +11,16 @@ const gun = parseRleOrThrow(readFileSync('src/patterns/rle/gosper-glider-gun.rle
 const start = defaultScenario(gun);
 const expectedHash = (g: number) => hashWorld(stepLifeN(start, g));
 
-async function open(page: Page) {
+async function open(page: Page, mode: 'factory' | 'sandbox' = 'factory') {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   await page.goto('/');
   await page.waitForFunction(() => !!window.__ia);
+  if (mode === 'sandbox') {
+    await page.getByTestId('mode-sandbox').click();
+    await expect(page.getByTestId('mode-sandbox')).toHaveAttribute('aria-checked', 'true');
+  }
   return errors;
 }
 
@@ -59,7 +63,8 @@ test('step, play and pause; browser board matches the pure engine', async ({ pag
 });
 
 test('draw tool toggles cells and logs commands', async ({ page }) => {
-  await open(page);
+  await open(page, 'sandbox');
+  await page.getByTestId('tool-draw').click();
   await clickCell(page, 100, 100);
   expect(await page.evaluate(() => window.__ia.cell(100, 100))).toBe(1);
   await expect(page.getByTestId('population')).toHaveText('37');
@@ -72,7 +77,8 @@ test('draw tool toggles cells and logs commands', async ({ page }) => {
 });
 
 test('placing a blueprint validates bounds and overlap', async ({ page }) => {
-  await open(page);
+  await open(page, 'sandbox');
+  await page.getByTestId('tool-draw').click();
   await page.getByTestId('blueprint-glider').click();
   await expect(page.getByTestId('tool-place')).toHaveAttribute('aria-checked', 'true');
   await clickCell(page, 80, 80);
@@ -89,7 +95,7 @@ test('placing a blueprint validates bounds and overlap', async ({ page }) => {
   await clickCell(page, 127, 127); // gun can't fit at the corner
   await expect(page.getByTestId('message')).toContainText('does not fit');
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('tool-draw')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('tool-select')).toHaveAttribute('aria-checked', 'true');
 });
 
 test('zoom, pan and fit move the camera only', async ({ page }) => {
@@ -119,7 +125,8 @@ test('zoom, pan and fit move the camera only', async ({ page }) => {
 });
 
 test('RLE import rejects bad input and accepts a valid blueprint; export round-trips', async ({ page }) => {
-  await open(page);
+  await open(page, 'sandbox');
+  await page.getByTestId('tool-draw').click();
   await page.getByTestId('import-open').click();
   await page.getByTestId('rle-text').fill('x = 3, y = 3, rule = B36/S23\n3o!');
   await page.getByTestId('rle-confirm').click();
@@ -139,7 +146,8 @@ test('RLE import rejects bad input and accepts a valid blueprint; export round-t
 });
 
 test('reset returns to the starting layout', async ({ page }) => {
-  await open(page);
+  await open(page, 'sandbox');
+  await page.getByTestId('tool-draw').click();
   await clickCell(page, 100, 100);
   for (let i = 0; i < 5; i++) await page.keyboard.press('n');
   await page.getByTestId('reset').click();

@@ -50,7 +50,8 @@ for (const size of [128, 256]) {
   const { Factory } = await import('../../src/game/factory');
   const { DEFAULT_COLLECTOR, ON_LANE_COLLECTOR_POSITION } = await import('../../src/scenarios/default');
   const time = (withDetector: boolean) => {
-    const f = new Factory(gunChamber(128), withDetector ? [{ ...DEFAULT_COLLECTOR, ...ON_LANE_COLLECTOR_POSITION }] : []);
+    const gun = parseRleOrThrow(readFileSync('src/patterns/rle/gosper-glider-gun.rle', 'utf8')).grid;
+    const f = new Factory({ world: gunChamber(128), detectors: withDetector ? [{ ...DEFAULT_COLLECTOR, ...ON_LANE_COLLECTOR_POSITION }] : [] }, { gun });
     f.step(200);
     const t = performance.now();
     f.step(3000);

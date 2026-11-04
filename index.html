@@ -9,6 +9,10 @@
   <body>
     <header class="topbar">
       <h1 class="brand">Incremental Automata <span class="rule" title="Conway's Game of Life rule">B3/S23</span></h1>
+      <div class="segmented mode" role="radiogroup" aria-label="Mode">
+        <button role="radio" data-mode="factory" data-testid="mode-factory" aria-checked="true">Factory</button>
+        <button role="radio" data-mode="sandbox" data-testid="mode-sandbox" aria-checked="false">Sandbox</button>
+      </div>
       <div class="controls" role="toolbar" aria-label="Simulation controls">
         <button id="play" data-testid="play" class="primary" aria-keyshortcuts="Space">Play</button>
         <button id="step" data-testid="step" aria-keyshortcuts="N" title="Advance one generation (N)">Step</button>
@@ -17,8 +21,8 @@
           <input id="speed" data-testid="speed" type="range" min="0" max="9" step="1" value="4" aria-describedby="speed-value" />
           <output id="speed-value" data-testid="speed-value">15 gen/s</output>
         </label>
-        <button id="reset" data-testid="reset" title="Back to the chamber's starting layout">Reset</button>
-        <button id="clear" data-testid="clear" title="Remove every live cell">Clear</button>
+        <button id="reset" data-testid="reset">New game</button>
+        <button id="clear" data-testid="clear" class="sandbox-only" title="Remove every live cell">Clear</button>
       </div>
     </header>
 
@@ -34,12 +38,26 @@
       </section>
 
       <aside class="panel">
-        <section class="collector-panel" aria-labelledby="collector-title">
-          <h2 id="collector-title">Collector</h2>
+        <section class="goal factory-only" aria-labelledby="goal-title" data-testid="goal">
+          <h2 id="goal-title">Goal <span id="goal-index" data-testid="goal-index"></span></h2>
+          <p class="goal-name" id="goal-name" data-testid="goal-name"></p>
+          <div class="progress" role="progressbar" id="goal-progress" data-testid="goal-progress" aria-valuemin="0"><span></span></div>
+          <p class="hint" id="goal-hint" data-testid="goal-hint"></p>
+        </section>
+
+        <section class="collector-panel" aria-labelledby="production-title">
+          <h2 id="production-title">Production <span class="sandbox-only tag">sandbox: not saved</span></h2>
           <div class="energy"><span class="energy-value" id="energy" data-testid="energy">0</span><span class="energy-label">Energy</span></div>
           <dl class="stats">
+            <dt>Collected (last 300 gen)</dt><dd id="rate-300" data-testid="rate-300">0</dd>
+            <dt>Lost at edges (last 300 gen)</dt><dd id="lost-300" data-testid="lost-300">0</dd>
             <dt>Gliders collected</dt><dd id="signals-collected" data-testid="signals-collected">0</dd>
-            <dt>Last 300 generations</dt><dd id="rate-300" data-testid="rate-300">0</dd>
+          </dl>
+        </section>
+
+        <section aria-labelledby="collector-title">
+          <h2 id="collector-title">Collector <span id="collector-name" data-testid="collector-name"></span></h2>
+          <dl class="stats">
             <dt>Near misses</dt><dd id="near-misses" data-testid="near-misses">0</dd>
             <dt>Direction</dt><dd><span id="collector-heading" data-testid="collector-heading">SE</span></dd>
           </dl>
@@ -47,6 +65,43 @@
           <div class="row">
             <button type="button" id="collector-move" data-testid="collector-move">Move collector</button>
             <button type="button" id="collector-rotate" data-testid="collector-rotate" title="Change which glider direction it counts">Rotate direction</button>
+          </div>
+        </section>
+
+        <section class="factory-only" aria-labelledby="shop-title">
+          <h2 id="shop-title">Shop</h2>
+          <div id="shop" class="shop" data-testid="shop"></div>
+        </section>
+
+        <section aria-labelledby="machines-title">
+          <h2 id="machines-title">Machines</h2>
+          <ul id="machines" class="machines" data-testid="machines"></ul>
+        </section>
+
+        <section>
+          <h2>Tool</h2>
+          <div class="segmented tools" role="radiogroup" aria-label="Tool">
+            <button role="radio" data-tool="select" data-testid="tool-select" aria-checked="true">Select</button>
+            <button role="radio" data-tool="pan" data-testid="tool-pan" aria-checked="false">Pan</button>
+            <button role="radio" data-tool="collector" data-testid="tool-collector" aria-checked="false">Move collector</button>
+            <button role="radio" data-tool="draw" data-testid="tool-draw" class="sandbox-only" aria-checked="false">Draw</button>
+            <button role="radio" data-tool="place" data-testid="tool-place" class="sandbox-only" aria-checked="false">Place</button>
+          </div>
+          <p class="hint" id="tool-hint"></p>
+          <div class="orient">
+            <button id="rotate" data-testid="rotate" aria-keyshortcuts="R">Rotate (R)</button>
+            <button id="mirror" data-testid="mirror" aria-keyshortcuts="M">Mirror (M)</button>
+            <span id="orientation" data-testid="orientation">rot0</span>
+          </div>
+        </section>
+
+        <section class="sandbox-only">
+          <h2>Blueprints</h2>
+          <div id="palette" class="palette" data-testid="palette"></div>
+          <h2>RLE</h2>
+          <div class="row">
+            <button id="import-open" data-testid="import-open">Import…</button>
+            <button id="export" data-testid="export">Export board</button>
           </div>
         </section>
 
@@ -59,35 +114,7 @@
             <dt>Board</dt><dd id="board-size" data-testid="board-size">128 × 128</dd>
             <dt>Cursor</dt><dd id="cursor" data-testid="cursor">–</dd>
           </dl>
-        </section>
-
-        <section>
-          <h2>Tool</h2>
-          <div class="segmented" role="radiogroup" aria-label="Tool">
-            <button role="radio" data-tool="draw" data-testid="tool-draw" aria-checked="true">Draw</button>
-            <button role="radio" data-tool="pan" data-testid="tool-pan" aria-checked="false">Pan</button>
-            <button role="radio" data-tool="place" data-testid="tool-place" aria-checked="false">Place</button>
-            <button role="radio" data-tool="collector" data-testid="tool-collector" aria-checked="false">Collector</button>
-          </div>
-          <p class="hint" id="tool-hint">Click or drag to toggle cells. Right-drag pans, wheel zooms.</p>
-        </section>
-
-        <section>
-          <h2>Blueprints</h2>
-          <div id="palette" class="palette" data-testid="palette"></div>
-          <div class="orient">
-            <button id="rotate" data-testid="rotate" aria-keyshortcuts="R">Rotate (R)</button>
-            <button id="mirror" data-testid="mirror" aria-keyshortcuts="M">Mirror (M)</button>
-            <span id="orientation" data-testid="orientation">rot0</span>
-          </div>
-        </section>
-
-        <section>
-          <h2>RLE</h2>
-          <div class="row">
-            <button id="import-open" data-testid="import-open">Import…</button>
-            <button id="export" data-testid="export">Export board</button>
-          </div>
+          <p class="hint factory-only"><span id="save-status" data-testid="save-status">Not saved yet</span> · <button type="button" id="save-now" data-testid="save-now" class="link">Save now</button></p>
         </section>
       </aside>
     </main>
