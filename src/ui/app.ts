@@ -4,12 +4,17 @@ import { encodeRle, parseRle } from '../core/rle';
 import { stampGrid } from '../core/stamp';
 import { IDENTITY, transformGrid, transformName, type Rotation, type Transform } from '../core/transform';
 import { getCell, population, type Grid } from '../core/world';
+import { trackTopLeft } from '../detectors/detector';
+import { HEADINGS, HEADING_VECTORS, type Heading } from '../detectors/templates';
+import { receiptsInWindow } from '../economy/ledger';
 import { GenerationClock } from '../game/clock';
-import { Simulation } from '../game/simulation';
+import { DEFAULT_CONFIG } from '../game/config';
+import { Factory } from '../game/factory';
 import { LIBRARY } from '../patterns/library';
 import { fitBoard, panBy, screenToCellInt, zoomAt, type Camera } from '../render/camera';
-import { BoardRenderer, type Overlay } from '../render/renderer';
-import { defaultScenario } from '../scenarios/default';
+import { BoardRenderer, type CollectorOverlay, type Overlay } from '../render/renderer';
+import { DEFAULT_COLLECTOR, defaultScenario } from '../scenarios/default';
+import { diagnoseCollector } from './diagnostics';
 
 export const SPEED_LEVELS = [1, 2, 5, 10, 15, 30, 60, 120, 240, 480] as const;
 
@@ -23,9 +28,14 @@ const THEME = {
   ghostBad: 'rgba(242,119,122,0.22)',
   ghostCell: 'rgba(219,230,240,0.75)',
   hover: 'rgba(219,230,240,0.6)',
+  gate: '#f5b041',
+  gateFlash: '#fff3c4',
+  zone: 'rgba(245,176,65,0.05)',
+  lane: 'rgba(245,176,65,0.16)',
+  tracked: 'rgba(245,176,65,0.75)',
 };
 
-type Tool = 'draw' | 'pan' | 'place';
+type Tool = 'draw' | 'pan' | 'place' | 'collector';
 
 interface Blueprint {
   id: string;
@@ -38,6 +48,7 @@ const TOOL_HINTS: Record<Tool, string> = {
   draw: 'Click or drag to toggle cells. Right-drag pans, wheel zooms.',
   pan: 'Drag to move the view. Wheel or +/− to zoom.',
   place: 'Click to place the selected blueprint. R rotates, M mirrors, Esc cancels.',
+  collector: 'Click or drag to move the collector gate. Gliders pay out when they cross it in the arrow\'s direction.',
 };
 
 function $(id: string): HTMLElement {
@@ -52,7 +63,9 @@ export function startApp(): void {
   const renderer = new BoardRenderer(canvas, THEME);
 
   const gun = LIBRARY.find((l) => l.entry.id === 'gosper-glider-gun')!.pattern.grid;
-  const sim = new Simulation(defaultScenario(gun));
+  const factory = new Factory(defaultScenario(gun), [DEFAULT_COLLECTOR], DEFAULT_CONFIG);
+  const COLLECTOR_ID = DEFAULT_COLLECTOR.id;
+  let flashUntil = 0;
   const clock = new GenerationClock({ generationsPerSecond: SPEED_LEVELS[4], maxGenerationsPerTick: 64 });
 
   const blueprints: Blueprint[] = LIBRARY.map((l) => ({
@@ -134,7 +147,7 @@ export function startApp(): void {
   }
 
   function fit(): void {
-    cam = fitBoard(sim.world.width, sim.world.height, viewW, viewH);
+    cam = fitBoard(factory.world.width, factory.world.height, viewW, viewH);
   }
 
   function ghostOrigin(cell: { x: number; y: number }, g: Grid): { x: number; y: number } {
@@ -144,22 +157,43 @@ export function startApp(): void {
   // ---------- commands ----------
   function stepOnce(): void {
     setRunning(false);
-    sim.step(1);
+    if (factory.step(1).receipts.length) flashUntil = performance.now() + 350;
   }
 
   function placeAt(cell: { x: number; y: number }): void {
     const g = transformGrid(selected.grid, transform);
     const o = ghostOrigin(cell, g);
-    const r = sim.apply({ type: 'stamp', patternId: selected.id, grid: selected.grid, x: o.x, y: o.y, transform });
+    const r = factory.apply({ type: 'stamp', patternId: selected.id, grid: selected.grid, x: o.x, y: o.y, transform });
     if (!r.ok) say(r.message, 'error');
     else if (r.warnings.length) say(r.warnings.join(' '), 'warn');
-    else say(`Placed ${selected.name} at (${o.x}, ${o.y}), generation ${sim.world.generation}`);
+    else say(`Placed ${selected.name} at (${o.x}, ${o.y}), generation ${factory.world.generation}`);
+  }
+
+  function collector() {
+    return factory.detectors.find((d) => d.config.id === COLLECTOR_ID)!;
+  }
+
+  /** The gate's glider centre sits at anchor + 1.5, so centre it under the cursor. */
+  function moveCollectorTo(cell: { x: number; y: number }): void {
+    const w = factory.world;
+    const x = Math.min(w.width - 1, Math.max(0, cell.x - 1));
+    const y = Math.min(w.height - 1, Math.max(0, cell.y - 1));
+    const c = collector().config;
+    if (c.x === x && c.y === y) return;
+    factory.apply({ type: 'move-detector', id: COLLECTOR_ID, x, y });
+  }
+
+  function rotateCollector(): void {
+    const h = collector().config.heading;
+    const next = HEADINGS[(HEADINGS.indexOf(h) + 1) % HEADINGS.length] as Heading;
+    factory.apply({ type: 'set-detector-heading', id: COLLECTOR_ID, heading: next });
   }
 
   // ---------- pointer input ----------
   type Drag =
     | { kind: 'pan'; lastX: number; lastY: number; id: number }
-    | { kind: 'paint'; alive: boolean; id: number; last: string };
+    | { kind: 'paint'; alive: boolean; id: number; last: string }
+    | { kind: 'collector'; id: number; last: string };
   let drag: Drag | null = null;
 
   const localPoint = (e: PointerEvent | WheelEvent) => {
@@ -178,14 +212,19 @@ export function startApp(): void {
       return;
     }
     if (e.button !== 0) return;
+    if (tool === 'collector') {
+      moveCollectorTo(cell);
+      drag = { kind: 'collector', id: e.pointerId, last: `${cell.x},${cell.y}` };
+      return;
+    }
     if (tool === 'place') {
       placeAt(cell);
       return;
     }
-    const w = sim.world;
+    const w = factory.world;
     if (cell.x < 0 || cell.y < 0 || cell.x >= w.width || cell.y >= w.height) return;
     const alive = getCell(w, cell.x, cell.y) === 0;
-    sim.apply({ type: 'set-cell', x: cell.x, y: cell.y, alive });
+    factory.apply({ type: 'set-cell', x: cell.x, y: cell.y, alive });
     drag = { kind: 'paint', alive, id: e.pointerId, last: `${cell.x},${cell.y}` };
   });
 
@@ -198,13 +237,19 @@ export function startApp(): void {
       cam = panBy(cam, p.x - drag.lastX, p.y - drag.lastY);
       drag.lastX = p.x;
       drag.lastY = p.y;
+    } else if (drag.kind === 'collector') {
+      const key = `${cell.x},${cell.y}`;
+      if (key !== drag.last) {
+        drag.last = key;
+        moveCollectorTo(cell);
+      }
     } else {
       const key = `${cell.x},${cell.y}`;
-      const w = sim.world;
+      const w = factory.world;
       if (key !== drag.last && cell.x >= 0 && cell.y >= 0 && cell.x < w.width && cell.y < w.height) {
         drag.last = key;
         if ((getCell(w, cell.x, cell.y) === 1) !== drag.alive) {
-          sim.apply({ type: 'set-cell', x: cell.x, y: cell.y, alive: drag.alive });
+          factory.apply({ type: 'set-cell', x: cell.x, y: cell.y, alive: drag.alive });
         }
       }
     }
@@ -234,11 +279,11 @@ export function startApp(): void {
   speedInput.addEventListener('input', () => setSpeed(Number(speedInput.value)));
   $('reset').addEventListener('click', () => {
     setRunning(false);
-    sim.reset();
-    say('Chamber reset to its starting layout');
+    factory.reset();
+    say('Chamber reset: starting layout, collector and energy restored');
   });
   $('clear').addEventListener('click', () => {
-    sim.apply({ type: 'clear' });
+    factory.apply({ type: 'clear' });
     say('Board cleared');
   });
   $('zoom-in').addEventListener('click', () => (cam = zoomAt(cam, viewW / 2, viewH / 2, 1.5)));
@@ -263,7 +308,7 @@ export function startApp(): void {
     dialogMode = mode;
     $('rle-title').textContent = mode === 'import' ? 'Import RLE' : 'Board as RLE';
     rleText.readOnly = mode === 'export';
-    rleText.value = mode === 'export' ? encodeRle(sim.world, { comments: [`Generation ${sim.world.generation}`] }) : '';
+    rleText.value = mode === 'export' ? encodeRle(factory.world, { comments: [`Generation ${factory.world.generation}`] }) : '';
     rleConfirm.textContent = mode === 'import' ? 'Use as blueprint' : 'Copy';
     rleError.textContent = '';
     dialog.showModal();
@@ -314,6 +359,7 @@ export function startApp(): void {
     else if (k === 'm' || k === 'M') mirror();
     else if (k === 'f' || k === 'F') fit();
     else if (k === 'Escape') setTool('draw');
+    else if (k === 'c' || k === 'C') setTool('collector');
     else if (k === '+' || k === '=') cam = zoomAt(cam, viewW / 2, viewH / 2, 1.25);
     else if (k === '-' || k === '_') cam = zoomAt(cam, viewW / 2, viewH / 2, 0.8);
     else if (k.startsWith('Arrow')) {
@@ -338,15 +384,22 @@ export function startApp(): void {
 
   // ---------- frame loop ----------
   const genEl = $('generation'), popEl = $('population'), rateEl = $('rate'), cursorEl = $('cursor');
+  const energyEl = $('energy'), collectedEl = $('signals-collected'), rate300El = $('rate-300');
+  const missesEl = $('near-misses'), diagEl = $('diagnostic'), headingEl = $('collector-heading');
+  $('collector-rotate').addEventListener('click', rotateCollector);
+  $('collector-move').addEventListener('click', () => setTool('collector'));
   const rateWindow: Array<{ t: number; g: number }> = [];
   let last = performance.now();
 
   function frame(now: number): void {
     const dt = now - last;
     last = now;
-    if (running) sim.step(clock.tick(dt));
+    if (running) {
+      const ev = factory.step(clock.tick(dt));
+      if (ev.receipts.length) flashUntil = now + 350;
+    }
 
-    const w = sim.world;
+    const w = factory.world;
     rateWindow.push({ t: now, g: w.generation });
     while (rateWindow.length > 2 && now - rateWindow[0]!.t > 1000) rateWindow.shift();
     const first = rateWindow[0]!;
@@ -357,7 +410,30 @@ export function startApp(): void {
     rateEl.textContent = `${rate.toFixed(rate < 10 ? 1 : 0)} gen/s${clock.lagging ? ' (capped)' : ''}`;
     cursorEl.textContent = hover && hover.x >= 0 && hover.y >= 0 && hover.x < w.width && hover.y < w.height ? `${hover.x}, ${hover.y}` : '–';
 
-    const overlay: Overlay = {};
+    const det = collector();
+    const recent = receiptsInWindow(factory.economy, w.generation, DEFAULT_CONFIG.rateWindow);
+    energyEl.textContent = String(factory.economy.energy);
+    collectedEl.textContent = String(factory.economy.receipts.length);
+    rate300El.textContent = String(recent);
+    missesEl.textContent = String(det.nearMisses);
+    headingEl.textContent = det.config.heading;
+    const dg = diagnoseCollector(det, w.generation, recent, DEFAULT_CONFIG.rateWindow);
+    if (diagEl.textContent !== dg.text) diagEl.textContent = dg.text;
+    diagEl.dataset.level = dg.level;
+
+    const [hx, hy] = HEADING_VECTORS[det.config.heading];
+    const collectorOverlay: CollectorOverlay = {
+      x: det.config.x,
+      y: det.config.y,
+      hx,
+      hy,
+      gateHalfWidth: DEFAULT_CONFIG.detector.gateHalfWidth,
+      observeHalfWidth: DEFAULT_CONFIG.detector.observeHalfWidth,
+      observeDepth: DEFAULT_CONFIG.detector.observeDepth,
+      tracks: det.tracks.map((t) => trackTopLeft(det.config.heading, t)),
+      flash: now < flashUntil ? (flashUntil - now) / 350 : 0,
+    };
+    const overlay: Overlay = { collectors: [collectorOverlay] };
     if (hover && tool === 'place') {
       const g = transformGrid(selected.grid, transform);
       const o = ghostOrigin(hover, g);
@@ -372,29 +448,32 @@ export function startApp(): void {
   setSpeed(4);
   setTool('draw');
   setTransform({ ...IDENTITY });
-  $('board-size').textContent = `${sim.world.width} × ${sim.world.height}`;
+  $('board-size').textContent = `${factory.world.width} × ${factory.world.height}`;
   requestAnimationFrame(frame);
 
   // Read-only debug handle for /playtest and e2e tests (dev builds only).
   if (import.meta.env.DEV) {
     (window as unknown as { __ia: unknown }).__ia = {
-      generation: () => sim.world.generation,
-      population: () => population(sim.world),
-      boardHash: () => hashWorld(sim.world),
+      generation: () => factory.world.generation,
+      population: () => population(factory.world),
+      boardHash: () => hashWorld(factory.world),
       running: () => running,
       camera: () => ({ ...cam }),
       cellToClient: (x: number, y: number) => {
         const r = canvas.getBoundingClientRect();
         return { x: r.left + (x + 0.5 - cam.originX) * cam.zoom, y: r.top + (y + 0.5 - cam.originY) * cam.zoom };
       },
-      cell: (x: number, y: number) => getCell(sim.world, x, y),
-      log: () => sim.log.map((l) => ({ generation: l.generation, type: l.command.type })),
+      cell: (x: number, y: number) => getCell(factory.world, x, y),
+      log: () => factory.log.map((l) => ({ generation: l.generation, type: l.command.type })),
+      energy: () => factory.economy.energy,
+      receipts: () => factory.economy.receipts.map((r) => ({ ...r })),
+      collector: () => structuredClone(collector()),
       /** Times rendering and stepping on copies; never changes the live board. */
       benchmark: (frames = 200) => {
         let t = performance.now();
-        for (let i = 0; i < frames; i++) renderer.draw(sim.world, cam, dpr);
+        for (let i = 0; i < frames; i++) renderer.draw(factory.world, cam, dpr);
         const renderMs = (performance.now() - t) / frames;
-        let w = sim.world;
+        let w = factory.world;
         t = performance.now();
         for (let i = 0; i < frames; i++) w = stepLife(w);
         const stepMs = (performance.now() - t) / frames;

@@ -88,3 +88,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
   .panel { border-left: 0; border-top: 1px solid var(--border); }
   .message { max-width: calc(100% - 24px); bottom: 56px; }
 }
+
+.collector-panel .energy { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.energy-value { font: 600 32px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--warn); font-variant-numeric: tabular-nums; }
+.energy-label { color: var(--muted); }
+.diagnostic { margin: 8px 0; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); font-size: 13px; }
+.diagnostic[data-level="ok"] { border-color: var(--accent); color: var(--accent); }
+.diagnostic[data-level="warn"] { border-color: var(--warn); color: var(--warn); }
+.segmented { flex-wrap: wrap; }

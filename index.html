@@ -34,6 +34,22 @@
       </section>
 
       <aside class="panel">
+        <section class="collector-panel" aria-labelledby="collector-title">
+          <h2 id="collector-title">Collector</h2>
+          <div class="energy"><span class="energy-value" id="energy" data-testid="energy">0</span><span class="energy-label">Energy</span></div>
+          <dl class="stats">
+            <dt>Gliders collected</dt><dd id="signals-collected" data-testid="signals-collected">0</dd>
+            <dt>Last 300 generations</dt><dd id="rate-300" data-testid="rate-300">0</dd>
+            <dt>Near misses</dt><dd id="near-misses" data-testid="near-misses">0</dd>
+            <dt>Direction</dt><dd><span id="collector-heading" data-testid="collector-heading">SE</span></dd>
+          </dl>
+          <p id="diagnostic" class="diagnostic" data-testid="diagnostic" role="status" aria-live="polite"></p>
+          <div class="row">
+            <button type="button" id="collector-move" data-testid="collector-move">Move collector</button>
+            <button type="button" id="collector-rotate" data-testid="collector-rotate" title="Change which glider direction it counts">Rotate direction</button>
+          </div>
+        </section>
+
         <section>
           <h2>Status</h2>
           <dl class="stats">
@@ -51,6 +67,7 @@
             <button role="radio" data-tool="draw" data-testid="tool-draw" aria-checked="true">Draw</button>
             <button role="radio" data-tool="pan" data-testid="tool-pan" aria-checked="false">Pan</button>
             <button role="radio" data-tool="place" data-testid="tool-place" aria-checked="false">Place</button>
+            <button role="radio" data-tool="collector" data-testid="tool-collector" aria-checked="false">Collector</button>
           </div>
           <p class="hint" id="tool-hint">Click or drag to toggle cells. Right-drag pans, wheel zooms.</p>
         </section>

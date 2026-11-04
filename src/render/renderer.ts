@@ -11,12 +11,33 @@ export interface Theme {
   ghostBad: string;
   ghostCell: string;
   hover: string;
+  gate: string;
+  gateFlash: string;
+  zone: string;
+  lane: string;
+  tracked: string;
+}
+
+export interface CollectorOverlay {
+  /** Gate anchor cell and heading vector. */
+  x: number;
+  y: number;
+  hx: number;
+  hy: number;
+  gateHalfWidth: number;
+  observeHalfWidth: number;
+  observeDepth: number;
+  /** Top-left cells of gliders currently tracked by this collector. */
+  tracks: Array<{ x: number; y: number }>;
+  /** 1 right after a payout, fading to 0. */
+  flash: number;
 }
 
 export interface Overlay {
   /** Placement preview: transformed pattern at a cell position. */
   ghost?: { grid: Grid; x: number; y: number; valid: boolean };
   hoverCell?: { x: number; y: number };
+  collectors?: CollectorOverlay[];
 }
 
 /**
@@ -133,11 +154,85 @@ export class BoardRenderer {
       ctx.strokeRect(ox + overlay.hoverCell.x * z, oy + overlay.hoverCell.y * z, z, z);
     }
 
+    for (const c of overlay.collectors ?? []) this.drawCollector(c, ox, oy, z, dpr);
+
     // Board edge — projectiles crossing it are lost.
     ctx.strokeStyle = theme.edge;
     ctx.lineWidth = Math.max(1, 2 * dpr);
     ctx.strokeRect(ox, oy, world.width * z, world.height * z);
   }
+
+  private drawCollector(c: CollectorOverlay, ox: number, oy: number, z: number, dpr: number): void {
+    const { ctx, theme } = this;
+    const { at } = collectorGeometry(c);
+    const S = (p: { x: number; y: number }) => [ox + p.x * z, oy + p.y * z] as const;
+
+    // Observation zone
+    const O = c.observeHalfWidth, D = c.observeDepth;
+    ctx.beginPath();
+    ctx.moveTo(...S(at(O, -D)));
+    ctx.lineTo(...S(at(-O, -D)));
+    ctx.lineTo(...S(at(-O, D)));
+    ctx.lineTo(...S(at(O, D)));
+    ctx.closePath();
+    ctx.fillStyle = theme.zone;
+    ctx.fill();
+
+    // Catch strip: the lanes the gate accepts, drawn through the whole zone
+    const W = c.gateHalfWidth + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(...S(at(W, -D)));
+    ctx.lineTo(...S(at(-W, -D)));
+    ctx.lineTo(...S(at(-W, D)));
+    ctx.lineTo(...S(at(W, D)));
+    ctx.closePath();
+    ctx.fillStyle = theme.lane;
+    ctx.fill();
+
+    // Tracked gliders
+    ctx.strokeStyle = theme.tracked;
+    ctx.lineWidth = Math.max(1, 1.5 * dpr);
+    for (const t of c.tracks) ctx.strokeRect(ox + (t.x - 0.5) * z, oy + (t.y - 0.5) * z, 4 * z, 4 * z);
+
+    // Gate line across the catch strip, then a heading arrow beyond it
+    const { a, b } = collectorGatePoints(c);
+    ctx.strokeStyle = c.flash > 0 ? theme.gateFlash : theme.gate;
+    ctx.lineWidth = Math.max(2 * dpr, z * (0.5 + 0.5 * c.flash));
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(...S(a));
+    ctx.lineTo(...S(b));
+    ctx.stroke();
+    const tail = at(0, 1), tip = at(0, 6);
+    ctx.lineWidth = Math.max(1.5 * dpr, z * 0.25);
+    ctx.beginPath();
+    ctx.moveTo(...S(tail));
+    ctx.lineTo(...S(tip));
+    ctx.moveTo(...S(tip));
+    ctx.lineTo(...S(at(1.2, 4.4)));
+    ctx.moveTo(...S(tip));
+    ctx.lineTo(...S(at(-1.2, 4.4)));
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+  }
+}
+
+/**
+ * Collector overlay (game layer, not cells). Geometry in cell units: a
+ * glider's 3×3 centre is anchor + 1.5; one lateral lane is (hx/2, −hy/2);
+ * one progress unit is (hx/2, hy/2).
+ */
+function collectorGeometry(c: CollectorOverlay) {
+  const cx = c.x + 1.5, cy = c.y + 1.5;
+  const lat = { x: c.hx / 2, y: -c.hy / 2 };
+  const fwd = { x: c.hx / 2, y: c.hy / 2 };
+  const at = (l: number, f: number) => ({ x: cx + lat.x * l + fwd.x * f, y: cy + lat.y * l + fwd.y * f });
+  return { at };
+}
+
+export function collectorGatePoints(c: CollectorOverlay): { a: { x: number; y: number }; b: { x: number; y: number } } {
+  const { at } = collectorGeometry(c);
+  return { a: at(c.gateHalfWidth + 1.5, 0), b: at(-(c.gateHalfWidth + 1.5), 0) };
 }
 
 export function parseHexColor(hex: string): [number, number, number] {

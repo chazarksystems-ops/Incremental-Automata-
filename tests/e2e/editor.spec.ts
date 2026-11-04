@@ -1,23 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
+import './ia';
 import { readFileSync } from 'node:fs';
 import { hashWorld } from '../../src/core/hash';
 import { stepLifeN } from '../../src/core/life';
 import { parseRleOrThrow } from '../../src/core/rle';
 import { defaultScenario } from '../../src/scenarios/default';
 
-interface IA {
-  generation(): number;
-  population(): number;
-  boardHash(): string;
-  running(): boolean;
-  camera(): { originX: number; originY: number; zoom: number };
-  cellToClient(x: number, y: number): { x: number; y: number };
-  cell(x: number, y: number): number;
-  log(): Array<{ generation: number; type: string }>;
-}
-declare global {
-  interface Window { __ia: IA }
-}
 
 const gun = parseRleOrThrow(readFileSync('src/patterns/rle/gosper-glider-gun.rle', 'utf8')).grid;
 const start = defaultScenario(gun);

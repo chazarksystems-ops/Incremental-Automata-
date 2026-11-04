@@ -46,6 +46,21 @@ for (const size of [128, 256]) {
   }
 }
 
+{
+  const { Factory } = await import('../../src/game/factory');
+  const { DEFAULT_COLLECTOR, ON_LANE_COLLECTOR_POSITION } = await import('../../src/scenarios/default');
+  const time = (withDetector: boolean) => {
+    const f = new Factory(gunChamber(128), withDetector ? [{ ...DEFAULT_COLLECTOR, ...ON_LANE_COLLECTOR_POSITION }] : []);
+    f.step(200);
+    const t = performance.now();
+    f.step(3000);
+    return (performance.now() - t) / 3000;
+  };
+  const runs = (d: boolean) => Array.from({ length: 5 }, () => time(d)).sort((a, b) => a - b)[2]!;
+  const base = runs(false), det = runs(true);
+  console.log(`\nFactory 128×128 gun chamber: ${base.toFixed(4)} ms/gen without collector, ${det.toFixed(4)} ms/gen with 1 collector (+${(det - base).toFixed(4)})`);
+}
+
 if (process.argv.includes('--browser')) {
   const port = 4318;
   const server = spawn('npx', ['vite', '--port', String(port), '--strictPort'], { stdio: 'ignore' });
