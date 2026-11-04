@@ -7,3 +7,4 @@ blob-report/
 .DS_Store
 __pycache__/
 .venv/
+.playwright-mcp/

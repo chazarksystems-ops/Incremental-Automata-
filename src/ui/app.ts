@@ -9,10 +9,13 @@ import { HEADINGS, HEADING_VECTORS, type Heading } from '../detectors/templates'
 import { collectedCount, receiptsInWindow } from '../economy/ledger';
 import { GenerationClock } from '../game/clock';
 import { DEFAULT_CONFIG, type UpgradeId } from '../game/config';
-import { Factory, type FactoryCommand, type Machine } from '../game/factory';
+import { Factory, type FactoryCommand, type GameSnapshot, type Machine } from '../game/factory';
+import { describeHazard, laneForGun, laneHazards, snapToLane, type Box, type Hazard, type Lane } from '../game/guides';
+import { History } from '../game/history';
+import { Trial, compareTrials, type TrialResult } from '../game/trial';
 import { GOALS } from '../game/goals';
 import { lossesInWindow } from '../game/losses';
-import { SAVE_KEY, parseSave, serializeSave } from '../game/save';
+import { CHECKPOINTS_KEY, SAVE_KEY, parseCheckpoints, parseSave, serializeCheckpoints, serializeSave, type Checkpoint } from '../game/save';
 import { gunOutput } from '../patterns/gun-output';
 import { LIBRARY } from '../patterns/library';
 import { fitBoard, panBy, screenToCellInt, zoomAt, type Camera } from '../render/camera';
@@ -117,6 +120,22 @@ export function startApp(): void {
   const f = (): Factory => (mode === 'factory' ? game : sandbox!);
   const selected: Record<Mode, string | null> = { factory: game.detectors[0]?.config.id ?? null, sandbox: null };
 
+  const history: Record<Mode, History> = { factory: new History(), sandbox: new History() };
+  interface ExperimentState {
+    baseline: GameSnapshot;
+    baselineSig: string;
+    mainHistory: History;
+    baselineResult: TrialResult | null;
+    variantResult: TrialResult | null;
+    testedSig: string | null;
+    running: { base: Trial | null; variant: Trial } | null;
+  }
+  let experiment: ExperimentState | null = null;
+  let testedThroughput: { rate: number; lost: number; sig: string; generation: number } | null = null;
+  let checkpoints: Checkpoint[] = [];
+  let gestureSeq = 0;
+  let shiftDown = false;
+
   const clock = new GenerationClock({ generationsPerSecond: SPEED_LEVELS[4], maxGenerationsPerTick: 64 });
   const sandboxBlueprints: Blueprint[] = LIBRARY.map((l) => ({
     id: l.entry.id,
@@ -153,6 +172,10 @@ export function startApp(): void {
   }
 
   function setRunning(on: boolean): void {
+    if (on && experiment && mode === 'factory') {
+      say('Live play is paused during an experiment. Use Test, then Keep or Discard.', 'warn');
+      on = false;
+    }
     running = on;
     clock.reset();
     playBtn.textContent = on ? 'Pause' : 'Play';
@@ -207,12 +230,116 @@ export function startApp(): void {
     setTransform({ ...transform, mirror: !transform.mirror });
   }
 
-  function apply(cmd: FactoryCommand): boolean {
+  const LABELS: Record<FactoryCommand['type'], string> = {
+    'set-cell': 'draw', stamp: 'place pattern', clear: 'clear board', 'clear-rect': 'clear area', resize: 'resize',
+    'build-gun': 'build gun', 'build-collector': 'build collector', 'remove-machine': 'remove machine',
+    'buy-upgrade': 'buy upgrade', 'move-detector': 'move collector', 'set-detector-heading': 'rotate collector',
+  };
+
+  /** Apply a player command; on success it becomes one undo step (or joins the current gesture). */
+  function apply(cmd: FactoryCommand, gestureKey?: string): boolean {
+    const h = history[mode];
+    const before = h.isCoalescing(gestureKey) ? null : f().snapshot();
     const r = f().apply(cmd);
     if (!r.ok) say(r.message, 'error');
     else if (r.warnings.length) say(r.warnings.join(' '), 'warn');
-    if (r.ok) dirty = true;
+    if (r.ok) {
+      if (before) h.record(before, LABELS[cmd.type], gestureKey);
+      dirty = true;
+      refreshPanels();
+    }
     return r.ok;
+  }
+
+  /** Panels that depend on layout/experiment state; called every frame and right after any action. */
+  function refreshPanels(): void {
+    const fac = f();
+    if (mode === 'factory') {
+      const t = testedThroughput && testedThroughput.sig === layoutSig(fac) ? testedThroughput : null;
+      const text = t ? `${t.rate} / 300 · ${t.lost} lost` : '–';
+      const el = $('tested-rate');
+      if (el.textContent !== text) el.textContent = text;
+      el.title = t ? `Measured over ${DEFAULT_CONFIG.trialGenerations} generations from generation ${t.generation}` : 'Run an experiment to measure this layout';
+    }
+    expEls.banner.hidden = mode !== 'factory' || !experiment;
+    if (experiment && !experiment.running && experiment.variantResult) {
+      const stale = experiment.testedSig !== layoutSig(fac);
+      if ((expEls.verdict.dataset.verdict === 'stale') !== stale) renderExperiment();
+    }
+  }
+
+  function replaceFactory(next: Factory): void {
+    if (mode === 'factory') game = next;
+    else sandbox = next;
+    setRunning(false);
+    if (!next.detectors.some((d) => d.config.id === selected[mode])) selected[mode] = next.detectors[0]?.config.id ?? null;
+    shopSig = machinesSig = goalSig = hazardSig = checkpointSig = '';
+    if (mode === 'factory') dirty = true;
+    refreshPanels();
+  }
+
+  const restoreSnapshot = (snap: GameSnapshot) => Factory.fromSnapshot(snap, blueprintsForFactory);
+
+  function undo(): void {
+    const e = history[mode].undo(f().snapshot());
+    if (!e) return;
+    replaceFactory(restoreSnapshot(e.snapshot));
+    say(`Undid "${e.label}". Back to generation ${e.generation}.`);
+  }
+
+  function redo(): void {
+    const e = history[mode].redo(f().snapshot());
+    if (!e) return;
+    replaceFactory(restoreSnapshot(e.snapshot));
+    say(`Redid "${e.label}". Generation ${e.generation}.`);
+  }
+
+  /** Signature of everything that affects production (not the cells in flight). */
+  function layoutSig(fac: Factory = f()): string {
+    return JSON.stringify([
+      fac.world.width,
+      fac.unlocks,
+      fac.machines.map((m) => [m.id, m.kind, m.x, m.y, m.transform]),
+      fac.detectors.map((d) => [d.config.id, d.config.x, d.config.y, d.config.heading]),
+    ]);
+  }
+
+  // ---------- construction guides ----------
+  function currentLanes(fac: Factory = f()): Lane[] {
+    return fac.machines.filter((m) => m.kind === 'gun').map((m) => laneForGun(m.id, gun, m.x, m.y, m.transform ?? IDENTITY));
+  }
+  function gunBoxes(fac: Factory = f()): Box[] {
+    return fac.machines.filter((m) => m.kind === 'gun').map((m) => ({ id: m.id, x: m.x, y: m.y, width: m.width!, height: m.height! }));
+  }
+  function machineName(id: string): string {
+    if (id === 'preview') return 'The new gun';
+    const m = f().machines.find((x) => x.id === id);
+    return m ? `${m.kind === 'gun' ? 'Gun' : 'Collector'} at (${m.x}, ${m.y})` : id;
+  }
+  let hazardSig = '';
+  let hazards: Hazard[] = [];
+  function renderWarnings(): void {
+    const fac = f();
+    const sig = layoutSig(fac);
+    if (sig === hazardSig) return;
+    hazardSig = sig;
+    hazards = laneHazards(currentLanes(fac), gunBoxes(fac), fac.world.width, fac.world.height);
+    $('warnings').replaceChildren(
+      ...hazards.map((h) => {
+        const li = document.createElement('li');
+        li.dataset.testid = `warning-${h.kind}`;
+        li.textContent = `⚠ ${describeHazard(h, machineName)}`;
+        return li;
+      }),
+    );
+  }
+
+  /** Collector anchor under the cursor, snapped onto a predicted lane unless Shift is held. */
+  function collectorTarget(cell: { x: number; y: number }, heading?: Heading): { x: number; y: number; heading?: Heading; snapped: boolean } {
+    const a = anchorAt(cell);
+    if (shiftDown) return { ...a, snapped: false };
+    const s = snapToLane(a.x, a.y, currentLanes(), 3, heading);
+    return s ? { x: s.x, y: s.y, heading: s.heading, snapped: true } : { ...a, snapped: false };
   }
 
   function selectedCollector(): DetectorState | null {
@@ -238,7 +365,8 @@ export function startApp(): void {
     $('reset').title = m === 'factory' ? 'Start over (your current chamber and energy are lost)' : 'Back to the sandbox starting layout';
     setTool('select');
     setTransform({ ...IDENTITY });
-    shopSig = machinesSig = '';
+    shopSig = machinesSig = hazardSig = '';
+    renderExperiment();
     fit();
     say(m === 'sandbox' ? 'Sandbox: free editing and all tools. Nothing here is saved or counts toward goals.' : 'Factory mode.');
   }
@@ -246,7 +374,8 @@ export function startApp(): void {
   // ---------- saving ----------
   function saveNow(reason: 'auto' | 'manual'): void {
     if (mode !== 'factory' && reason === 'auto') return;
-    if (storageSet(SAVE_KEY, serializeSave(game))) {
+    const toSave = experiment ? restoreSnapshot(experiment.baseline) : game;
+    if (storageSet(SAVE_KEY, serializeSave(toSave))) {
       lastSave = { at: performance.now(), generation: game.generation };
       dirty = false;
       if (reason === 'manual') say(`Saved at generation ${game.generation}.`);
@@ -413,8 +542,8 @@ export function startApp(): void {
   // ---------- pointer input ----------
   type Drag =
     | { kind: 'pan'; lastX: number; lastY: number; id: number }
-    | { kind: 'paint'; alive: boolean; id: number; last: string }
-    | { kind: 'collector'; id: number; last: string };
+    | { kind: 'paint'; alive: boolean; id: number; last: string; key: string }
+    | { kind: 'collector'; id: number; last: string; key: string };
   let drag: Drag | null = null;
 
   const localPoint = (e: PointerEvent | WheelEvent) => {
@@ -439,14 +568,14 @@ export function startApp(): void {
     return best;
   }
 
-  function moveSelectedTo(cell: { x: number; y: number }): void {
+  function moveSelectedTo(cell: { x: number; y: number }, gestureKey?: string): void {
     const d = selectedCollector();
     if (!d) return say('There is no collector to move. Build one from the Shop.', 'warn');
-    const a = anchorAt(cell);
+    const a = collectorTarget(cell, d.config.heading);
     const w = f().world;
     const x = Math.min(w.width - 1, Math.max(0, a.x)), y = Math.min(w.height - 1, Math.max(0, a.y));
     if (d.config.x === x && d.config.y === y) return;
-    apply({ type: 'move-detector', id: d.config.id, x, y });
+    apply({ type: 'move-detector', id: d.config.id, x, y }, gestureKey);
   }
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -454,6 +583,8 @@ export function startApp(): void {
     const p = localPoint(e);
     const cell = screenToCellInt(cam, p.x, p.y);
     canvas.setPointerCapture(e.pointerId);
+    shiftDown = e.shiftKey;
+    const gestureKey = `gesture-${++gestureSeq}`;
     const startPan = () => {
       drag = { kind: 'pan', lastX: p.x, lastY: p.y, id: e.pointerId };
       canvas.classList.add('panning');
@@ -471,8 +602,8 @@ export function startApp(): void {
         return;
       }
       case 'collector':
-        moveSelectedTo(cell);
-        drag = { kind: 'collector', id: e.pointerId, last: `${cell.x},${cell.y}` };
+        moveSelectedTo(cell, gestureKey);
+        drag = { kind: 'collector', id: e.pointerId, last: `${cell.x},${cell.y}`, key: gestureKey };
         return;
       case 'build-gun': {
         const o = ghostOrigin(cell, transformGrid(gun, transform));
@@ -483,9 +614,10 @@ export function startApp(): void {
         return;
       }
       case 'build-collector': {
-        const a = anchorAt(cell);
+        const a = collectorTarget(cell);
+        const heading = a.heading ?? newCollectorHeading;
         const before = new Set(f().detectors.map((d) => d.config.id));
-        if (apply({ type: 'build-collector', x: a.x, y: a.y, heading: newCollectorHeading })) {
+        if (apply({ type: 'build-collector', x: a.x, y: a.y, heading })) {
           const added = f().detectors.find((d) => !before.has(d.config.id));
           if (added) selected[mode] = added.config.id;
           say('Collector built and selected.');
@@ -504,8 +636,8 @@ export function startApp(): void {
       case 'draw': {
         if (!inBoard(cell)) return;
         const alive = getCell(f().world, cell.x, cell.y) === 0;
-        apply({ type: 'set-cell', x: cell.x, y: cell.y, alive });
-        drag = { kind: 'paint', alive, id: e.pointerId, last: `${cell.x},${cell.y}` };
+        apply({ type: 'set-cell', x: cell.x, y: cell.y, alive }, gestureKey);
+        drag = { kind: 'paint', alive, id: e.pointerId, last: `${cell.x},${cell.y}`, key: gestureKey };
         return;
       }
       default:
@@ -514,6 +646,7 @@ export function startApp(): void {
   });
 
   canvas.addEventListener('pointermove', (e) => {
+    shiftDown = e.shiftKey;
     const p = localPoint(e);
     const cell = screenToCellInt(cam, p.x, p.y);
     hover = cell;
@@ -527,14 +660,18 @@ export function startApp(): void {
     const key = `${cell.x},${cell.y}`;
     if (key === drag.last) return;
     drag.last = key;
-    if (drag.kind === 'collector') moveSelectedTo(cell);
+    shiftDown = e.shiftKey;
+    if (drag.kind === 'collector') moveSelectedTo(cell, drag.key);
     else if (inBoard(cell) && (getCell(f().world, cell.x, cell.y) === 1) !== drag.alive) {
-      apply({ type: 'set-cell', x: cell.x, y: cell.y, alive: drag.alive });
+      apply({ type: 'set-cell', x: cell.x, y: cell.y, alive: drag.alive }, drag.key);
     }
   });
 
   const endDrag = (e: PointerEvent) => {
-    if (drag && drag.id === e.pointerId) drag = null;
+    if (drag && drag.id === e.pointerId) {
+      drag = null;
+      history[mode].endGesture();
+    }
     canvas.classList.remove('panning');
   };
   canvas.addEventListener('pointerup', endDrag);
@@ -558,12 +695,16 @@ export function startApp(): void {
     if (mode === 'sandbox') {
       sandbox = new Factory(newSandbox(gun), blueprintsForFactory);
       selected.sandbox = null;
+      history.sandbox = new History();
       setRunning(false);
       fit();
       say('Sandbox reset.');
       return;
     }
-    if (!window.confirm('Start a new game? Your current chamber, machines and energy will be lost.')) return;
+    if (!window.confirm('Start a new game? Your current chamber, machines and energy will be lost (checkpoints are kept).')) return;
+    experiment = null;
+    history.factory = new History();
+    testedThroughput = null;
     setRunning(false);
     game = new Factory(newGame(gun), blueprintsForFactory);
     selected.factory = game.detectors[0]?.config.id ?? null;
@@ -597,6 +738,7 @@ export function startApp(): void {
 
   function stepOnce(): void {
     setRunning(false);
+    if (experiment && mode === 'factory') return say('Stepping is paused during an experiment. Use Test.', 'warn');
     handleEvents(f().step(1), performance.now());
   }
 
@@ -608,6 +750,231 @@ export function startApp(): void {
       if (g) say(`Goal complete: ${g.title}!`);
     }
   }
+
+  // ---------- experiments ----------
+  const expEls = {
+    status: $('experiment-status'),
+    start: $('experiment-start') as HTMLButtonElement,
+    test: $('experiment-test') as HTMLButtonElement,
+    keep: $('experiment-keep') as HTMLButtonElement,
+    discard: $('experiment-discard') as HTMLButtonElement,
+    progress: $('experiment-progress'),
+    results: $('experiment-results') as HTMLTableElement,
+    verdict: $('experiment-verdict'),
+    banner: $('experiment-banner'),
+  };
+
+  function startExperiment(): void {
+    if (mode !== 'factory' || experiment) return;
+    setRunning(false);
+    experiment = {
+      baseline: game.snapshot(),
+      baselineSig: layoutSig(game),
+      mainHistory: history.factory,
+      baselineResult: null,
+      variantResult: null,
+      testedSig: null,
+      running: null,
+    };
+    history.factory = new History();
+    renderExperiment();
+    say('Experiment started. Change the layout (build, move, remove), then press Test.');
+  }
+
+  function testExperiment(): void {
+    if (!experiment || experiment.running) return;
+    const gens = DEFAULT_CONFIG.trialGenerations;
+    experiment.running = {
+      base: experiment.baselineResult ? null : new Trial(experiment.baseline, 'Original', gens, blueprintsForFactory),
+      variant: new Trial(game.snapshot(), 'With changes', gens, blueprintsForFactory),
+    };
+    experiment.variantResult = null;
+    experiment.testedSig = layoutSig(game);
+    renderExperiment();
+  }
+
+  /** Advance running trials within a per-frame time budget so the page stays responsive. */
+  function advanceTrials(budgetMs: number): void {
+    const run = experiment?.running;
+    if (!run || !experiment) return;
+    const t0 = performance.now();
+    while (performance.now() - t0 < budgetMs) {
+      if (run.base && !run.base.done) run.base.advance(20);
+      else if (!run.variant.done) run.variant.advance(20);
+      else break;
+    }
+    const total = (run.base ? 1 : 0) + 1;
+    const done = (run.base ? run.base.progress : 0) + run.variant.progress;
+    ((expEls.progress.firstElementChild as HTMLElement).style.width = `${Math.round((100 * Math.min(done, total)) / total)}%`);
+    if ((!run.base || run.base.done) && run.variant.done) {
+      if (run.base) experiment.baselineResult = run.base.result();
+      experiment.variantResult = run.variant.result();
+      experiment.running = null;
+      renderExperiment();
+    }
+  }
+
+  function keepExperiment(): void {
+    const ex = experiment;
+    if (!ex || ex.running) return;
+    history.factory = ex.mainHistory;
+    if (layoutSig(game) !== ex.baselineSig) history.factory.record(ex.baseline, 'experiment');
+    if (ex.variantResult && ex.testedSig === layoutSig(game)) {
+      testedThroughput = { rate: ex.variantResult.steadyRate, lost: ex.variantResult.steadyLost, sig: ex.testedSig, generation: ex.variantResult.startGeneration };
+    }
+    experiment = null;
+    dirty = true;
+    renderExperiment();
+    refreshPanels();
+    say('Kept your changes. Live play can resume; Undo reverts the whole experiment.');
+  }
+
+  function discardExperiment(): void {
+    const ex = experiment;
+    if (!ex || ex.running) return;
+    history.factory = ex.mainHistory;
+    experiment = null;
+    replaceFactory(restoreSnapshot(ex.baseline));
+    if (ex.baselineResult) {
+      testedThroughput = { rate: ex.baselineResult.steadyRate, lost: ex.baselineResult.steadyLost, sig: ex.baselineSig, generation: ex.baselineResult.startGeneration };
+    }
+    renderExperiment();
+    refreshPanels();
+    say('Discarded: the original layout is back, exactly as it was.');
+  }
+
+  function renderExperiment(): void {
+    const ex = mode === 'factory' ? experiment : null;
+    expEls.banner.hidden = !ex;
+    expEls.start.hidden = !!ex;
+    expEls.test.hidden = expEls.keep.hidden = expEls.discard.hidden = !ex;
+    const busy = !!ex?.running;
+    expEls.test.disabled = expEls.keep.disabled = expEls.discard.disabled = busy;
+    expEls.test.textContent = `Test (${DEFAULT_CONFIG.trialGenerations} gen)`;
+    expEls.progress.hidden = !busy;
+    playBtn.disabled = !!ex;
+    ($('step') as HTMLButtonElement).disabled = !!ex;
+    ($('checkpoint-save') as HTMLButtonElement).disabled = !!ex;
+    checkpointSig = '';
+    if (!ex) {
+      expEls.status.textContent = 'Try a change without risk: start an experiment, change the layout, then Test. It compares your change with the original over the same generations.';
+      expEls.results.hidden = true;
+      expEls.verdict.textContent = '';
+      return;
+    }
+    expEls.status.textContent = busy
+      ? `Testing both layouts for ${DEFAULT_CONFIG.trialGenerations} generations…`
+      : `Experiment from generation ${ex.baseline.generation}. Change the layout, then Test.`;
+    const b = ex.baselineResult, v = ex.variantResult;
+    if (!b || !v) {
+      expEls.results.hidden = true;
+      expEls.verdict.textContent = '';
+      return;
+    }
+    const rows: Array<[string, (r: TrialResult) => number]> = [
+      ['Collected / 300 gen (steady)', (r) => r.steadyRate],
+      ['Lost / 300 gen (steady)', (r) => r.steadyLost],
+      [`Collected in ${v.generations} gen`, (r) => r.collected],
+      ['Energy gained', (r) => r.energyGained],
+      ['Near misses', (r) => r.nearMisses],
+    ];
+    expEls.results.tBodies[0]!.replaceChildren(
+      ...rows.map(([label, get]) => {
+        const tr = document.createElement('tr');
+        const th = document.createElement('th');
+        th.scope = 'row';
+        th.textContent = label;
+        const tb = document.createElement('td');
+        tb.textContent = String(get(b));
+        const tv = document.createElement('td');
+        tv.textContent = String(get(v));
+        tr.append(th, tb, tv);
+        return tr;
+      }),
+    );
+    expEls.results.hidden = false;
+    const cmp = compareTrials(b, v);
+    const stale = ex.testedSig !== layoutSig(game);
+    expEls.verdict.textContent = stale ? `${cmp.summary} (Layout changed since this test. Test again.)` : cmp.summary;
+    expEls.verdict.dataset.verdict = stale ? 'stale' : cmp.verdict;
+  }
+
+  expEls.start.addEventListener('click', startExperiment);
+  expEls.test.addEventListener('click', testExperiment);
+  expEls.keep.addEventListener('click', keepExperiment);
+  expEls.discard.addEventListener('click', discardExperiment);
+
+  // ---------- checkpoints ----------
+  let checkpointSig = '';
+  {
+    const text = storageGet(CHECKPOINTS_KEY);
+    if (text) {
+      const r = parseCheckpoints(text, blueprintsForFactory);
+      checkpoints = r.checkpoints;
+      if (r.error || r.dropped) {
+        startupMessage = { text: `${r.dropped || 'Some'} checkpoint(s) could not be loaded and were skipped.`, kind: 'warn' };
+      }
+    }
+  }
+  function persistCheckpoints(): void {
+    if (!storageSet(CHECKPOINTS_KEY, serializeCheckpoints(checkpoints))) say('Could not store checkpoints: browser storage is unavailable or full.', 'error');
+  }
+  function saveCheckpoint(): void {
+    if (mode !== 'factory' || experiment) return;
+    const g = game;
+    const cp: Checkpoint = {
+      id: `cp-${Date.now()}-${checkpoints.length}`,
+      name: `Gen ${g.generation} · ${g.count('gun')} gun${g.count('gun') === 1 ? '' : 's'} · ${g.economy.energy} ⚡`,
+      generation: g.generation,
+      createdAt: new Date().toISOString(),
+      snapshot: g.snapshot(),
+    };
+    checkpoints.push(cp);
+    let dropped = '';
+    while (checkpoints.length > DEFAULT_CONFIG.maxCheckpoints) dropped = checkpoints.shift()!.name;
+    persistCheckpoints();
+    checkpointSig = '';
+    say(`Checkpoint saved: ${cp.name}${dropped ? ` (oldest "${dropped}" removed)` : ''}.`);
+  }
+  function restoreCheckpoint(cp: Checkpoint): void {
+    if (experiment) return say('Finish the experiment (Keep or Discard) before restoring a checkpoint.', 'warn');
+    history.factory.record(game.snapshot(), 'restore checkpoint');
+    replaceFactory(restoreSnapshot(cp.snapshot));
+    say(`Restored checkpoint "${cp.name}". Undo returns to where you were.`);
+  }
+  function renderCheckpoints(): void {
+    const sig = [mode, !!experiment, ...checkpoints.map((c) => c.id)].join('|');
+    if (sig === checkpointSig) return;
+    checkpointSig = sig;
+    $('checkpoints').replaceChildren(
+      ...checkpoints.map((cp) => {
+        const li = document.createElement('li');
+        li.dataset.testid = `checkpoint-${cp.id}`;
+        const label = document.createElement('span');
+        label.textContent = cp.name;
+        const restoreBtn = document.createElement('button');
+        restoreBtn.type = 'button';
+        restoreBtn.textContent = 'Restore';
+        restoreBtn.disabled = !!experiment;
+        restoreBtn.dataset.testid = 'checkpoint-restore';
+        restoreBtn.addEventListener('click', () => restoreCheckpoint(cp));
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.textContent = 'Delete';
+        del.dataset.testid = 'checkpoint-delete';
+        del.addEventListener('click', () => {
+          checkpoints = checkpoints.filter((c) => c !== cp);
+          persistCheckpoints();
+          checkpointSig = '';
+        });
+        li.append(label, restoreBtn, del);
+        return li;
+      }),
+    );
+  }
+  $('checkpoint-save').addEventListener('click', saveCheckpoint);
+  $('undo').addEventListener('click', undo);
+  $('redo').addEventListener('click', redo);
 
   // ---------- RLE dialog (sandbox) ----------
   const dialog = $('rle-dialog') as HTMLDialogElement;
@@ -658,10 +1025,18 @@ export function startApp(): void {
   });
 
   // ---------- keyboard ----------
+  window.addEventListener('keyup', (e) => (shiftDown = e.shiftKey));
   window.addEventListener('keydown', (e) => {
+    shiftDown = e.shiftKey;
     if (dialog.open || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (k === 'z' || k === 'Z' || k === 'y' || k === 'Y')) {
+      e.preventDefault();
+      if (k === 'y' || k === 'Y' || e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (k === ' ') {
       e.preventDefault();
       setRunning(!running);
@@ -724,6 +1099,7 @@ export function startApp(): void {
     last = now;
     const fac = f();
     if (running) handleEvents(fac.step(clock.tick(dt)), now);
+    advanceTrials(8);
 
     const w = fac.world;
     if (w.width !== lastBoardSize) {
@@ -767,6 +1143,15 @@ export function startApp(): void {
     renderShop();
     renderMachines();
     renderGoal();
+    renderWarnings();
+    renderCheckpoints();
+    const h = history[mode];
+    const undoBtn = $('undo') as HTMLButtonElement, redoBtn = $('redo') as HTMLButtonElement;
+    undoBtn.disabled = !h.canUndo || !!experiment?.running;
+    redoBtn.disabled = !h.canRedo || !!experiment?.running;
+    undoBtn.title = h.undoLabel ? `Undo ${h.undoLabel} (Ctrl+Z)` : 'Nothing to undo';
+    redoBtn.title = h.redoLabel ? `Redo ${h.redoLabel} (Ctrl+Shift+Z)` : 'Nothing to redo';
+    refreshPanels();
     if (mode === 'factory') {
       saveStatusEl.textContent = lastSave
         ? `Saved at generation ${lastSave.generation} (${Math.round((now - lastSave.at) / 1000)} s ago)`
@@ -780,8 +1165,11 @@ export function startApp(): void {
       overlay.guns!.push({ x: m.x, y: m.y, width: m.width!, height: m.height!, highlight: m.id === hoverMachine });
       const o = gunOutput(gun, m.transform ?? IDENTITY);
       const [hx, hy] = HEADING_VECTORS[o.heading];
-      overlay.lanes!.push({ ax: m.x + o.anchorDx, ay: m.y + o.anchorDy, hx, hy, strong: m.id === hoverMachine });
+      const danger = hazards.some((hz) => hz.source === m.id || (hz.kind !== 'hits-machine' && hz.target === m.id));
+      overlay.lanes!.push({ ax: m.x + o.anchorDx, ay: m.y + o.anchorDy, hx, hy, strong: m.id === hoverMachine, danger });
     }
+    overlay.hazardMarks = hazards.map((hz) => ({ x: hz.x, y: hz.y }));
+    let previewWarning = '';
     for (const d of fac.detectors) overlay.collectors!.push(collectorOverlay(d, d === det));
     overlay.lossMarks = fac.losses.recent
       .filter((l) => w.generation - l.generation < 120)
@@ -796,16 +1184,31 @@ export function startApp(): void {
       if (tool === 'build-gun') {
         const out = gunOutput(gun, transform);
         const [hx, hy] = HEADING_VECTORS[out.heading];
-        overlay.lanes!.push({ ax: o.x + out.anchorDx, ay: o.y + out.anchorDy, hx, hy, strong: true });
+        const previewLane = laneForGun('preview', gun, o.x, o.y, transform);
+        const previewHz = laneHazards(
+          [...currentLanes(fac), previewLane],
+          [...gunBoxes(fac), { id: 'preview', x: o.x, y: o.y, width: g.width, height: g.height }],
+          w.width,
+          w.height,
+        ).filter((hz) => hz.source === 'preview' || hz.target === 'preview');
+        overlay.lanes!.push({ ax: o.x + out.anchorDx, ay: o.y + out.anchorDy, hx, hy, strong: true, danger: previewHz.length > 0 });
+        overlay.hazardMarks!.push(...previewHz.map((hz) => ({ x: hz.x, y: hz.y })));
+        previewWarning = previewHz.map((hz) => `⚠ ${describeHazard(hz, machineName)}`).join(' ');
       }
-    } else if (hover && tool === 'build-collector') {
-      const a = anchorAt(hover);
+    } else if (hover && (tool === 'build-collector' || tool === 'collector')) {
+      const sel = selectedCollector();
+      const t = collectorTarget(hover, tool === 'collector' ? sel?.config.heading : undefined);
+      const heading = tool === 'collector' ? (sel?.config.heading ?? 'SE') : (t.heading ?? newCollectorHeading);
+      if (t.snapped) overlay.snapMark = { x: t.x, y: t.y };
       overlay.collectors!.push(
-        collectorOverlay({ config: { id: 'ghost', x: a.x, y: a.y, heading: newCollectorHeading }, tracks: [], collected: 0, nearMisses: 0, lastMissOffset: null, lastMissGeneration: null, lastSignalGeneration: null }, true, true),
+        collectorOverlay({ config: { id: 'ghost', x: t.x, y: t.y, heading }, tracks: [], collected: 0, nearMisses: 0, lastMissOffset: null, lastMissGeneration: null, lastSignalGeneration: null }, true, true),
       );
     } else if (hover && tool === 'draw') {
       overlay.hoverCell = hover;
     }
+    const pw = $('preview-warning');
+    if (pw.textContent !== previewWarning) pw.textContent = previewWarning;
+    pw.hidden = !previewWarning;
     renderer.draw(w, cam, dpr, overlay);
     requestAnimationFrame(frame);
   }
@@ -842,6 +1245,17 @@ export function startApp(): void {
       losses: () => lossesInWindow(f().losses, f().generation, DEFAULT_CONFIG.rateWindow),
       unlocks: () => [...f().unlocks],
       boardSize: () => ({ width: f().world.width, height: f().world.height }),
+      snapshotJson: () => JSON.stringify(f().snapshot()),
+      history: () => history[mode].depth,
+      experiment: () =>
+        experiment && {
+          baselineGeneration: experiment.baseline.generation,
+          running: !!experiment.running,
+          baseline: experiment.baselineResult,
+          variant: experiment.variantResult,
+        },
+      hazards: () => hazards.map((h) => ({ ...h })),
+      checkpoints: () => checkpoints.map((c) => ({ id: c.id, name: c.name, generation: c.generation })),
       benchmark: (frames = 200) => {
         let t = performance.now();
         for (let i = 0; i < frames; i++) renderer.draw(f().world, cam, dpr);

@@ -5,12 +5,13 @@ A browser-first incremental automation game where real Conway's Game of Life
 energy, research and progression. Every claimed machine actually works under
 the automaton's rules.
 
-**Status:** Phase 3 (incremental progression) complete. Earn energy from real glider passages, spend it on more
-guns, collectors, orientation tools and a bigger chamber, and work through 7 goals. Autosaves in the browser.
-Sandbox mode keeps the free editor. See [`docs/PHASE3_REPORT.md`](docs/PHASE3_REPORT.md) (and Phase
-[1](docs/PHASE1_REPORT.md), [2](docs/PHASE2_REPORT.md)).
+**Status:** Phase 4 (experimentation) complete. Earn energy from real glider passages, build guns and collectors,
+and work through 7 goals. Then experiment safely: branch the game, change the layout, **Test** it against the
+original over the same generations, and keep or discard. Undo/redo, checkpoints, collector snapping and stream-collision
+warnings included. See [`docs/PHASE4_REPORT.md`](docs/PHASE4_REPORT.md) (and phases
+[1](docs/PHASE1_REPORT.md), [2](docs/PHASE2_REPORT.md), [3](docs/PHASE3_REPORT.md)).
 
-![Two guns, two collectors, no losses](docs/screenshots/2026-11-04-phase3/4-two-streams-no-losses.png)
+![Experiment: original vs. with changes](docs/screenshots/2026-11-04-phase4/2-experiment-gun-and-collector.png)
 
 ## Run
 
@@ -22,7 +23,7 @@ npm run test:e2e       # Playwright (Chromium)
 npm run bench          # add -- --browser for render timing
 ```
 
-Controls: Space play/pause · N step · C move collector · R rotate (gun with Orientation tools / new collector's direction) · M mirror · F fit · Esc select tool · wheel zoom · drag empty space or right-drag to pan.
+Controls: Space play/pause · N step · Ctrl+Z / Ctrl+Shift+Z undo/redo · C move collector (Shift: no snapping) · R rotate (gun with Orientation tools / new collector's direction) · M mirror · F fit · Esc select tool · wheel zoom · drag empty space or right-drag to pan.
 
 ## Docs
 

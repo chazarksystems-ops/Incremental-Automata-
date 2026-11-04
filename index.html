@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Incremental Automata</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 3'%3E%3Crect width='3' height='3' fill='%230b0f14'/%3E%3Cpath fill='%237ee7c1' d='M1 0h1v1H1zM2 1h1v1H2zM0 2h3v1H0z'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="/src/ui/style.css" />
   </head>
   <body>
@@ -21,6 +22,8 @@
           <input id="speed" data-testid="speed" type="range" min="0" max="9" step="1" value="4" aria-describedby="speed-value" />
           <output id="speed-value" data-testid="speed-value">15 gen/s</output>
         </label>
+        <button id="undo" data-testid="undo" aria-keyshortcuts="Control+Z" title="Undo (Ctrl+Z)" disabled>Undo</button>
+        <button id="redo" data-testid="redo" aria-keyshortcuts="Control+Shift+Z" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
         <button id="reset" data-testid="reset">New game</button>
         <button id="clear" data-testid="clear" class="sandbox-only" title="Remove every live cell">Clear</button>
       </div>
@@ -35,6 +38,8 @@
           <button id="fit" data-testid="fit" aria-keyshortcuts="F" title="Fit board (F)">Fit</button>
         </div>
         <div id="message" data-testid="message" class="message" role="status" aria-live="polite"></div>
+        <div id="experiment-banner" data-testid="experiment-banner" class="banner" hidden>Experiment: live play is paused. Make changes, then press Test.</div>
+        <div id="preview-warning" data-testid="preview-warning" class="preview-warning" role="alert" hidden></div>
       </section>
 
       <aside class="panel">
@@ -52,6 +57,7 @@
             <dt>Collected (last 300 gen)</dt><dd id="rate-300" data-testid="rate-300">0</dd>
             <dt>Lost at edges (last 300 gen)</dt><dd id="lost-300" data-testid="lost-300">0</dd>
             <dt>Gliders collected</dt><dd id="signals-collected" data-testid="signals-collected">0</dd>
+            <dt class="factory-only">Tested throughput</dt><dd class="factory-only" id="tested-rate" data-testid="tested-rate">–</dd>
           </dl>
         </section>
 
@@ -76,6 +82,30 @@
         <section aria-labelledby="machines-title">
           <h2 id="machines-title">Machines</h2>
           <ul id="machines" class="machines" data-testid="machines"></ul>
+          <ul id="warnings" class="warnings" data-testid="warnings" aria-label="Layout warnings"></ul>
+        </section>
+
+        <section class="factory-only experiment" aria-labelledby="experiment-title" data-testid="experiment">
+          <h2 id="experiment-title">Experiment</h2>
+          <p class="hint" id="experiment-status" data-testid="experiment-status">Try a change without risk: start an experiment, change the layout, then Test. It compares your change with the original over the same generations.</p>
+          <div class="row">
+            <button type="button" id="experiment-start" data-testid="experiment-start">Start experiment</button>
+            <button type="button" id="experiment-test" data-testid="experiment-test" hidden>Test</button>
+            <button type="button" id="experiment-keep" data-testid="experiment-keep" hidden>Keep changes</button>
+            <button type="button" id="experiment-discard" data-testid="experiment-discard" hidden>Discard</button>
+          </div>
+          <div class="progress" id="experiment-progress" data-testid="experiment-progress" hidden><span></span></div>
+          <table class="results" id="experiment-results" data-testid="experiment-results" hidden>
+            <thead><tr><th scope="col"></th><th scope="col">Original</th><th scope="col">With changes</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="verdict" id="experiment-verdict" data-testid="experiment-verdict"></p>
+        </section>
+
+        <section class="factory-only" aria-labelledby="checkpoints-title">
+          <h2 id="checkpoints-title">Checkpoints</h2>
+          <div class="row"><button type="button" id="checkpoint-save" data-testid="checkpoint-save">Save checkpoint</button></div>
+          <ul id="checkpoints" class="machines" data-testid="checkpoints"></ul>
         </section>
 
         <section>

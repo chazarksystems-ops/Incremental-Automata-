@@ -55,6 +55,8 @@ export interface LaneOverlay {
   hx: number;
   hy: number;
   strong: boolean;
+  /** Predicted to hit something: drawn in the danger colour. */
+  danger?: boolean;
 }
 
 export interface Overlay {
@@ -66,6 +68,10 @@ export interface Overlay {
   lanes?: LaneOverlay[];
   /** Recent losses at the board edge; alpha fades with age. */
   lossMarks?: Array<{ x: number; y: number; alpha: number }>;
+  /** Predicted stream hazards (construction guide warnings). */
+  hazardMarks?: Array<{ x: number; y: number }>;
+  /** Where a collector would snap onto a predicted lane. */
+  snapMark?: { x: number; y: number };
 }
 
 /**
@@ -195,8 +201,8 @@ export class BoardRenderer {
       const tx = l.hx > 0 ? world.width - cx : cx;
       const ty = l.hy > 0 ? world.height - cy : cy;
       const t = Math.max(0, Math.min(tx, ty));
-      ctx.strokeStyle = theme.lanePredicted;
-      ctx.globalAlpha = l.strong ? 1 : 0.45;
+      ctx.strokeStyle = l.danger ? theme.loss : theme.lanePredicted;
+      ctx.globalAlpha = l.strong || l.danger ? 1 : 0.45;
       ctx.lineWidth = Math.max(1, 1.5 * dpr);
       ctx.setLineDash([6 * dpr, 6 * dpr]);
       ctx.beginPath();
@@ -207,6 +213,24 @@ export class BoardRenderer {
       ctx.globalAlpha = 1;
     }
     for (const c of overlay.collectors ?? []) this.drawCollector(c, ox, oy, z, dpr);
+    for (const hm of overlay.hazardMarks ?? []) {
+      const cx = ox + (hm.x + 1.5) * z, cy = oy + (hm.y + 1.5) * z, r = Math.max(6 * dpr, 2.5 * z);
+      ctx.strokeStyle = theme.loss;
+      ctx.lineWidth = Math.max(2 * dpr, z * 0.35);
+      ctx.beginPath();
+      ctx.moveTo(cx - r, cy - r);
+      ctx.lineTo(cx + r, cy + r);
+      ctx.moveTo(cx + r, cy - r);
+      ctx.lineTo(cx - r, cy + r);
+      ctx.stroke();
+    }
+    if (overlay.snapMark) {
+      ctx.strokeStyle = theme.lanePredicted;
+      ctx.lineWidth = Math.max(1.5 * dpr, z * 0.25);
+      ctx.setLineDash([3 * dpr, 3 * dpr]);
+      ctx.strokeRect(ox + (overlay.snapMark.x - 1) * z, oy + (overlay.snapMark.y - 1) * z, 5 * z, 5 * z);
+      ctx.setLineDash([]);
+    }
     for (const m of overlay.lossMarks ?? []) {
       ctx.strokeStyle = theme.loss;
       ctx.globalAlpha = m.alpha;

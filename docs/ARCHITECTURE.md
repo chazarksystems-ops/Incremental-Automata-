@@ -1,4 +1,4 @@
-# Architecture (Phases 1–3)
+# Architecture (Phases 1–4)
 
 ```text
 UI (src/ui)  ──commands──▶  Simulation (src/game/simulation.ts) ◀── GenerationClock (src/game/clock.ts)
@@ -63,3 +63,11 @@ Renderer (src/render): camera math + Canvas 2D board renderer (read-only)
 - **Snapshot v2 / save.** `GameSnapshot` holds world RLE, machines, detectors (with in-flight tracks), economy, losses, unlocks, goals, `nextId`, `lastBuildGeneration`. `src/game/save.ts` wraps it in a versioned envelope with validation. Corrupt saves are backed up, never crash the game.
 - **Shared glider scan.** `src/detectors/scan.ts` (`findIsolatedGliders`, `passageId`) is used by collectors and the loss monitor. A sliding-window fast path is kept equal to a naive reference by a test.
 - **Assistive overlay only.** `gunOutput` measures each orientation's stream lane by running the gun. The renderer draws it dashed; it never affects cells.
+
+## Phase 4 additions
+
+- **History (`src/game/history.ts`).** Snapshot-based undo/redo per mode, with no inverse commands, so undo and redo are exact by construction. The UI records the pre-action snapshot only for successful actions and coalesces gestures by key.
+- **Trials (`src/game/trial.ts`).** `Trial` runs a *copy* (`Factory.fromSnapshot`) for N generations, sliceable via `advance(n)`, and returns `TrialResult` (steady-state collected/lost over the last `rateWindow`, totals, per-collector, near misses, final hash). `compareTrials` gives the verdict. The live game is never touched.
+- **Experiments (UI orchestration in `src/ui/app.ts`).** `{ baseline snapshot, separate History, cached baseline result, variant result, tested layout signature }`. Live play is paused. Keep records one history entry (baseline → current). Discard restores the baseline. Autosave writes the baseline while an experiment is open.
+- **Checkpoints (`src/game/save.ts`).** A list of `{ id, name, generation, createdAt, snapshot }` under its own storage key. Each entry is validated with the same code path as save files.
+- **Guides (`src/game/guides.ts`).** Pure geometry over predicted lanes (`gunOutput`): `laneHazards` and `snapToLane`. Advisory only; tests check the predictions against real runs.

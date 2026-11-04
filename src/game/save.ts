@@ -67,3 +67,55 @@ export function parseSave(text: string, blueprints: Blueprints, config: GameConf
     return { ok: false, error: `Save could not be restored: ${(err as Error).message}` };
   }
 }
+
+// ---------- checkpoints ----------
+
+export const CHECKPOINTS_KEY = `${SAVE_KEY}.checkpoints`;
+
+export interface Checkpoint {
+  id: string;
+  name: string;
+  generation: number;
+  createdAt: string;
+  snapshot: GameSnapshot;
+}
+
+export function serializeCheckpoints(list: readonly Checkpoint[]): string {
+  return JSON.stringify({ format: `${SAVE_FORMAT}-checkpoints`, version: SAVE_VERSION, checkpoints: list });
+}
+
+/**
+ * Parse stored checkpoints; each one is validated exactly like a save file and
+ * invalid ones are dropped (and reported) rather than failing the whole list.
+ */
+export function parseCheckpoints(
+  text: string,
+  blueprints: Blueprints,
+  config: GameConfig = DEFAULT_CONFIG,
+): { checkpoints: Checkpoint[]; dropped: number; error?: string } {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return { checkpoints: [], dropped: 0, error: 'Checkpoints are not valid JSON' };
+  }
+  if (!isObj(data) || data.format !== `${SAVE_FORMAT}-checkpoints` || !Array.isArray(data.checkpoints)) {
+    return { checkpoints: [], dropped: 0, error: 'Not a checkpoint list' };
+  }
+  const ok: Checkpoint[] = [];
+  let dropped = 0;
+  for (const c of data.checkpoints as unknown[]) {
+    if (!isObj(c) || typeof c.id !== 'string' || typeof c.name !== 'string' || typeof c.createdAt !== 'string') {
+      dropped++;
+      continue;
+    }
+    const env = JSON.stringify({ format: SAVE_FORMAT, version: SAVE_VERSION, savedAt: c.createdAt, snapshot: c.snapshot });
+    const r = parseSave(env, blueprints, config);
+    if (!r.ok) {
+      dropped++;
+      continue;
+    }
+    ok.push({ id: c.id, name: c.name, generation: r.factory.generation, createdAt: c.createdAt, snapshot: r.factory.snapshot() });
+  }
+  return { checkpoints: ok, dropped };
+}

@@ -27,6 +27,8 @@ describe('gunOutput (predicted lane overlay)', () => {
       for (const s of seen) {
         expect(s.heading, transformName(t)).toBe(o.heading);
         expect(hx * s.ax - hy * s.ay, transformName(t)).toBe(lane);
+        // The predicted start is upstream of (or at) every real glider of the stream.
+        expect(hx * s.ax + hy * s.ay, transformName(t)).toBeGreaterThanOrEqual(hx * (x + o.anchorDx) + hy * (y + o.anchorDy));
       }
     }
   });

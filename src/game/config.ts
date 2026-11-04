@@ -36,6 +36,10 @@ export interface GameConfig {
   chamber: { initialSize: number; expandedSize: number };
   /** A glider within this many cells of the edge it is heading for counts as lost (if never collected). */
   lossBand: number;
+  /** Generations each experiment test runs (baseline and variant alike). */
+  trialGenerations: number;
+  /** Saved checkpoints kept per game. */
+  maxCheckpoints: number;
 }
 
 export const DEFAULT_CONFIG: GameConfig = {
@@ -62,6 +66,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   ],
   chamber: { initialSize: 128, expandedSize: 192 },
   lossBand: 4,
+  trialGenerations: 900,
+  maxCheckpoints: 5,
 };
 
 export function upgradeDef(config: GameConfig, id: UpgradeId): UpgradeDef {

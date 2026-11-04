@@ -35,7 +35,7 @@ restating them.
 
 | Server | Status | Notes |
 | --- | --- | --- |
-| Playwright MCP (`@playwright/mcp`) | **enabled** in `.mcp.json`, pinned to `0.0.83` | Canvas UI interaction, screenshots, console errors |
+| Playwright MCP (`@playwright/mcp`) | **enabled** in `.mcp.json`, pinned to `0.0.83`; first used for `/playtest` in Phase 4 | Canvas UI interaction, screenshots, console errors. For canvas cells, `browser_run_code_unsafe` + `__ia.cellToClient` gives coordinate clicks; state is read via `__ia`, never written. |
 | Chrome DevTools MCP | deferred | Add only when profiling is needed (simulation speed, render cost, memory) |
 | GitHub MCP | not added | Local `git` plus the host's GitHub integration cover our needs |
 | Golly MCP | **not built** (python-lifelib script is the reference oracle) | Golly stays an independent reference app driven by local scripts. Revisit only if frequent programmatic access becomes necessary, and then expose a small restricted interface |
