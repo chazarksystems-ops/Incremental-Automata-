@@ -5,7 +5,7 @@ import './ia';
 async function open(page: Page) {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
+  await page.goto('/?nohelp');
   await page.waitForFunction(() => !!window.__ia);
   return errors;
 }

@@ -14,6 +14,7 @@ export interface Theme {
   machine: string;
   machineHighlight: string;
   lanePredicted: string;
+  laneUncollected: string;
   loss: string;
   gate: string;
   gateFlash: string;
@@ -57,6 +58,8 @@ export interface LaneOverlay {
   strong: boolean;
   /** Predicted to hit something: drawn in the danger colour. */
   danger?: boolean;
+  /** No collector on this stream yet: drawn in the warning colour. */
+  uncollected?: boolean;
 }
 
 export interface Overlay {
@@ -72,6 +75,8 @@ export interface Overlay {
   hazardMarks?: Array<{ x: number; y: number }>;
   /** Where a collector would snap onto a predicted lane. */
   snapMark?: { x: number; y: number };
+  /** Insulating border of the gun being placed. */
+  ghostBorder?: { x: number; y: number; width: number; height: number; valid: boolean };
 }
 
 /**
@@ -201,8 +206,8 @@ export class BoardRenderer {
       const tx = l.hx > 0 ? world.width - cx : cx;
       const ty = l.hy > 0 ? world.height - cy : cy;
       const t = Math.max(0, Math.min(tx, ty));
-      ctx.strokeStyle = l.danger ? theme.loss : theme.lanePredicted;
-      ctx.globalAlpha = l.strong || l.danger ? 1 : 0.45;
+      ctx.strokeStyle = l.danger ? theme.loss : l.uncollected ? theme.laneUncollected : theme.lanePredicted;
+      ctx.globalAlpha = l.strong || l.danger || l.uncollected ? 1 : 0.45;
       ctx.lineWidth = Math.max(1, 1.5 * dpr);
       ctx.setLineDash([6 * dpr, 6 * dpr]);
       ctx.beginPath();
@@ -223,6 +228,14 @@ export class BoardRenderer {
       ctx.moveTo(cx + r, cy - r);
       ctx.lineTo(cx - r, cy + r);
       ctx.stroke();
+    }
+    if (overlay.ghostBorder) {
+      const b = overlay.ghostBorder;
+      ctx.strokeStyle = b.valid ? theme.lanePredicted : theme.loss;
+      ctx.lineWidth = Math.max(1.5 * dpr, 2);
+      ctx.setLineDash([4 * dpr, 3 * dpr]);
+      ctx.strokeRect(ox + b.x * z, oy + b.y * z, b.width * z, b.height * z);
+      ctx.setLineDash([]);
     }
     if (overlay.snapMark) {
       ctx.strokeStyle = theme.lanePredicted;

@@ -1,7 +1,7 @@
 import { encodeRle, parseRleOrThrow } from '../core/rle';
 import { stampGrid } from '../core/stamp';
 import { IDENTITY, transformGrid, type Transform } from '../core/transform';
-import type { Grid, WorldState } from '../core/world';
+import { getCell, type Grid, type WorldState } from '../core/world';
 import {
   createDetector,
   reconfigureDetector,
@@ -27,6 +27,8 @@ import { DEFAULT_CONFIG, upgradeDef, type DetectorParams, type GameConfig, type 
 import { GOALS, goalDone, type GoalView } from './goals';
 import { createLosses, lossesInWindow, retractLoss, updateLosses, type LossRecord, type LossState } from './losses';
 import { Simulation, type Command } from './simulation';
+import { absolute, boxesOverlap, measureEnvelope } from '../patterns/envelope';
+import { laneForGun, laneHazards } from './guides';
 
 /**
  * Orchestrates one chamber: the automaton (via Simulation), placed machines,
@@ -293,6 +295,8 @@ export class Factory {
         const cost = this.machineCost('gun');
         if (cost === null) return { ok: false, message: 'Gun limit reached' };
         if (cost > this.s.economy.energy) return { ok: false, message: `Needs ${cost} energy (you have ${this.s.economy.energy})` };
+        const check = this.checkGunPlacement(cmd.x, cmd.y, cmd.transform);
+        if (!check.ok) return check;
         const placed = this.sim.apply({ type: 'stamp', patternId: 'gosper-glider-gun', grid: this.blueprints.gun, x: cmd.x, y: cmd.y, transform: cmd.transform });
         if (!placed.ok) return placed;
         const id = this.newId('gun');
@@ -320,7 +324,9 @@ export class Factory {
         const m = this.s.machines.find((x) => x.id === cmd.id);
         if (!m) return { ok: false, message: `No machine ${cmd.id}` };
         if (m.kind === 'gun') {
-          const cleared = this.sim.apply({ type: 'clear-rect', x: m.x, y: m.y, width: m.width!, height: m.height! });
+          // Clear the gun's whole measured activity area (not just its starting shape).
+          const act = absolute(measureEnvelope(this.blueprints.gun, m.transform ?? IDENTITY).activity, m.x, m.y);
+          const cleared = this.sim.apply({ type: 'clear-rect', ...act });
           if (!cleared.ok) return cleared;
         } else {
           this.s.detectors = this.s.detectors.filter((d) => d.config.id !== m.id);
@@ -367,9 +373,82 @@ export class Factory {
     return x >= 0 && y >= 0 && x < w.width && y < w.height;
   }
 
+  /** Insulating border (keep-out box) of every placed gun, in board coordinates. */
+  gunKeepOuts(): Array<{ id: string; x: number; y: number; width: number; height: number }> {
+    return this.s.machines
+      .filter((m) => m.kind === 'gun')
+      .map((m) => ({ id: m.id, ...absolute(measureEnvelope(this.blueprints.gun, m.transform ?? IDENTITY).keepOut, m.x, m.y) }));
+  }
+
+  /**
+   * Placement rules for a new gun at (x, y). With `config.insulation`:
+   *  1. its activity area is on the board;
+   *  2. its insulating border overlaps no other gun's border (⇒ ≥ 2 empty cells
+   *     between guns, so they can never interact);
+   *  3. with `config.blockStreamIntoMachines`: its predicted stream enters no
+   *     other gun's border, and no existing stream enters its border (checked
+   *     before 4 because it is the more useful explanation);
+   *  4. no live cell lies within 2 cells of its activity area (same guarantee
+   *     against debris and gliders present now).
+   */
+  checkGunPlacement(x: number, y: number, t: Transform): { ok: true } | { ok: false; message: string; reason: string } {
+    const w = this.world;
+    const env = measureEnvelope(this.blueprints.gun, t);
+    const act = absolute(env.activity, x, y);
+    if (act.x < 0 || act.y < 0 || act.x + act.width > w.width || act.y + act.height > w.height) {
+      return { ok: false, reason: 'out-of-bounds', message: 'The gun does not fit on the board there.' };
+    }
+    if (!this.config.insulation) {
+      const r = stampGrid(w, this.blueprints.gun, x, y, { transform: t });
+      return r.ok ? { ok: true } : { ok: false, reason: r.reason, message: r.message };
+    }
+    const keep = absolute(env.keepOut, x, y);
+    const others = this.gunKeepOuts();
+    const clash = others.find((o) => boxesOverlap(o, keep));
+    if (clash) {
+      const m = this.s.machines.find((q) => q.id === clash.id)!;
+      return {
+        ok: false,
+        reason: 'insulation',
+        message: `Too close to the gun at (${m.x}, ${m.y}). Guns need an insulating border: keep 2 empty cells between them or they wreck each other.`,
+      };
+    }
+    if (this.config.blockStreamIntoMachines) {
+      const lanes = [
+        ...this.s.machines.filter((m) => m.kind === 'gun').map((m) => laneForGun(m.id, this.blueprints.gun, m.x, m.y, m.transform ?? IDENTITY)),
+        laneForGun('new', this.blueprints.gun, x, y, t),
+      ];
+      const hit = laneHazards(lanes, [...others, { id: 'new', ...keep }], w.width, w.height).find(
+        (h) => h.kind === 'hits-machine' && (h.source === 'new' || h.target === 'new'),
+      );
+      if (hit) {
+        const where = (id: string) => {
+          const m = this.s.machines.find((q) => q.id === id);
+          return m ? `the gun at (${m.x}, ${m.y})` : 'the new gun';
+        };
+        return {
+          ok: false,
+          reason: 'stream',
+          message:
+            hit.source === 'new'
+              ? `The new gun's stream would run into ${where(hit.target)} and destroy it. Move it so its dashed line runs clear.`
+              : `The stream of ${where(hit.source)} would run into the new gun. Keep guns out of other streams.`,
+        };
+      }
+    }
+    for (let yy = act.y - 2; yy < act.y + act.height + 2; yy++) {
+      for (let xx = act.x - 2; xx < act.x + act.width + 2; xx++) {
+        if (getCell(w, xx, yy)) {
+          return { ok: false, reason: 'live-cells', message: `Live cells at (${xx}, ${yy}) are within 2 cells of the gun. Pick a clear spot.` };
+        }
+      }
+    }
+    return { ok: true };
+  }
+
   /** Dry-run check used by the UI preview for gun placement. */
   canPlaceGun(x: number, y: number, transform: Transform): boolean {
-    return stampGrid(this.world, this.blueprints.gun, x, y, { transform }).ok;
+    return this.checkGunPlacement(x, y, transform).ok;
   }
 
   snapshot(): GameSnapshot {

@@ -6,7 +6,7 @@ const SAVE_KEY = 'incremental-automata.save.v2';
 async function open(page: Page) {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
+  await page.goto('/?nohelp');
   await page.waitForFunction(() => !!window.__ia);
   return errors;
 }
@@ -51,7 +51,7 @@ test('goal card walks a new player from lining up the collector to buying a seco
   const before = await page.evaluate(() => window.__ia.energy());
   await page.getByTestId('shop-gun').click();
   await clickCell(page, 22, 44); // 36×9 ghost is centred on the cursor ⇒ origin (4, 40)
-  await expect(page.getByTestId('message')).toContainText('Built a Gosper gun at (4, 40)');
+  await expect(page.getByTestId('message')).toContainText('Gun built at (4, 40)');
   expect(await page.evaluate(() => window.__ia.energy())).toBe(before - 10);
   expect(await page.evaluate(() => window.__ia.machines().map((m) => [m.kind, m.x, m.y, m.paid]))).toEqual([
     ['gun', 4, 4, 0],
@@ -70,7 +70,7 @@ test('a failed build explains why and costs nothing', async ({ page }) => {
   const e = await page.evaluate(() => window.__ia.energy());
   await page.getByTestId('shop-gun').click();
   await clickCell(page, 24, 8); // on top of the starter gun
-  await expect(page.getByTestId('message')).toContainText('within 1 cell');
+  await expect(page.getByTestId('message')).toContainText('insulating border');
   expect(await page.evaluate(() => window.__ia.energy())).toBe(e);
   expect(await page.evaluate(() => window.__ia.machines().length)).toBe(2);
 });

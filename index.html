@@ -25,6 +25,7 @@
         <button id="undo" data-testid="undo" aria-keyshortcuts="Control+Z" title="Undo (Ctrl+Z)" disabled>Undo</button>
         <button id="redo" data-testid="redo" aria-keyshortcuts="Control+Shift+Z" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
         <button id="reset" data-testid="reset">New game</button>
+        <button id="help-open" data-testid="help-open" title="How to play and what to test" aria-label="Help">? Help</button>
         <button id="clear" data-testid="clear" class="sandbox-only" title="Remove every live cell">Clear</button>
       </div>
     </header>
@@ -47,6 +48,8 @@
           <h2 id="goal-title">Goal <span id="goal-index" data-testid="goal-index"></span></h2>
           <p class="goal-name" id="goal-name" data-testid="goal-name"></p>
           <div class="progress" role="progressbar" id="goal-progress" data-testid="goal-progress" aria-valuemin="0"><span></span></div>
+          <ol class="goal-steps" id="goal-steps" data-testid="goal-steps"></ol>
+          <div class="row"><button type="button" id="goal-show" data-testid="goal-show" class="primary small">Show me</button></div>
           <p class="hint" id="goal-hint" data-testid="goal-hint"></p>
         </section>
 
@@ -60,6 +63,15 @@
             <dt class="factory-only">Tested throughput</dt><dd class="factory-only" id="tested-rate" data-testid="tested-rate">–</dd>
           </dl>
         </section>
+
+        <details class="playtest factory-only" id="playtest" data-testid="playtest">
+          <summary><span>Playtest checklist</span> <span id="playtest-count" data-testid="playtest-count"></span></summary>
+          <p class="hint">Please try each of these. They tick themselves when done. Note anything confusing below.</p>
+          <ul id="playtest-tasks" class="playtest-tasks" data-testid="playtest-tasks"></ul>
+          <label class="notes-label" for="playtest-notes">Your notes (what confused you, what broke, what was fun)</label>
+          <textarea id="playtest-notes" data-testid="playtest-notes" rows="3" placeholder="e.g. I didn't know the dashed line was the stream…"></textarea>
+          <div class="row"><button type="button" id="playtest-report" data-testid="playtest-report">Show playtest report</button></div>
+        </details>
 
         <section aria-labelledby="collector-title">
           <h2 id="collector-title">Collector <span id="collector-name" data-testid="collector-name"></span></h2>
@@ -157,6 +169,46 @@
         <div class="row end">
           <button value="cancel" formnovalidate>Close</button>
           <button id="rle-confirm" data-testid="rle-confirm" class="primary" value="default">Use as blueprint</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="help-dialog" data-testid="help-dialog" class="help" aria-labelledby="help-title">
+      <form method="dialog">
+        <h2 id="help-title">How to play Incremental Automata</h2>
+        <p>Everything on the board is real <strong>Conway's Game of Life</strong>. Nothing is animated or faked: the machines work only because of the Life rule (B3/S23).</p>
+        <h3>What you see</h3>
+        <ul class="legend">
+          <li><span class="swatch cells"></span><strong>Green cells</strong>: live cells. A <em>Gosper glider gun</em> (the big shape top-left) makes a new <em>glider</em> every 30 generations.</li>
+          <li><span class="swatch uncollected"></span><span class="swatch lane"></span><strong>Dashed line from a gun</strong>: where its gliders will fly (its stream). <strong>Orange</strong> means nobody collects that stream yet; <strong>green</strong> means a collector is on it.</li>
+          <li><span class="swatch gate"></span><strong>Orange gate + strip</strong>: a collector. Each glider that crosses the gate in the arrow's direction pays 1 ⚡.</li>
+          <li><span class="swatch border"></span><strong>Dotted box around a gun</strong>: its insulating border. Guns need 2 empty cells between them, or they wreck each other.</li>
+          <li><span class="swatch danger"></span><strong>Red</strong>: trouble. A red line or ✕ means a stream will hit something, and red circles at the edge are gliders lost uncollected.</li>
+        </ul>
+        <h3>How to play</h3>
+        <ol>
+          <li>Follow the <strong>Goal</strong> card at the top right. It tells you exactly what to click, and highlights it.</li>
+          <li>Earn energy (⚡) by collecting gliders, then spend it in the <strong>Shop</strong>.</li>
+          <li>Each gun needs its own collector. Use <strong>Add collector</strong> next to a new gun under <em>Machines</em>.</li>
+          <li>Unsure about a change? <strong>Start experiment</strong>, make the change, press <strong>Test</strong>, then keep or discard it.</li>
+        </ol>
+        <h3>Controls</h3>
+        <p class="keys">Space play/pause · N step · Ctrl+Z / Ctrl+Shift+Z undo/redo · C move collector · R rotate · M mirror · Esc cancel · F fit · wheel zoom · drag empty space to pan · Shift = don't snap</p>
+        <h3>Playtesting</h3>
+        <p>The <strong>Playtest checklist</strong> (right panel, under Production; click it to open) lists what we'd like you to try. It ticks itself. When you're done, press <strong>Show playtest report</strong> and send us the text. Nothing is uploaded automatically.</p>
+        <div class="row end"><button value="close" class="primary" data-testid="help-close" autofocus>Let's play</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="report-dialog" data-testid="report-dialog" aria-labelledby="report-title">
+      <form method="dialog" class="rle-form">
+        <h2 id="report-title">Playtest report</h2>
+        <p class="hint">Copy this text and send it to the developers. It stays on your computer until you do.</p>
+        <textarea id="report-text" data-testid="report-text" rows="16" readonly spellcheck="false"></textarea>
+        <p id="report-status" class="hint" role="status"></p>
+        <div class="row end">
+          <button value="close">Close</button>
+          <button type="button" id="report-copy" data-testid="report-copy" class="primary">Copy</button>
         </div>
       </form>
     </dialog>

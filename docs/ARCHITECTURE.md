@@ -71,3 +71,10 @@ Renderer (src/render): camera math + Canvas 2D board renderer (read-only)
 - **Experiments (UI orchestration in `src/ui/app.ts`).** `{ baseline snapshot, separate History, cached baseline result, variant result, tested layout signature }`. Live play is paused. Keep records one history entry (baseline → current). Discard restores the baseline. Autosave writes the baseline while an experiment is open.
 - **Checkpoints (`src/game/save.ts`).** A list of `{ id, name, generation, createdAt, snapshot }` under its own storage key. Each entry is validated with the same code path as save files.
 - **Guides (`src/game/guides.ts`).** Pure geometry over predicted lanes (`gunOutput`): `laneHazards` and `snapToLane`. Advisory only; tests check the predictions against real runs.
+
+## Playtest round 1 additions (2026-11-05)
+
+- **Envelopes (`src/patterns/envelope.ts`).** `measureEnvelope(pattern, transform)` runs a machine alone and returns its activity box (outputs excluded) and the 1-cell insulating keep-out box. `Factory.checkGunPlacement` enforces non-overlapping keep-outs, no live cells within 2 cells, and (flagged) no stream into a keep-out. Guides use keep-out boxes for hazards.
+- **Lanes start at the measured exit point** (`gunOutput`: the first glider's first isolated position). The hazard check covers a glider's 4-phase footprint.
+- **Coverage and recommendations (`guides.ts`).** `streamCoverage` maps gun → collector. `recommendCollectorSpot` picks the first clear point on a lane. Both are predictions; the live counters show the real result.
+- **Playtest UI (`src/ui/playtest.ts`).** Checklist tasks ticked from UI events, notes and a plain-text report, all in browser storage only. Goals carry `steps` and `highlight` (data-testids) for the goal card.

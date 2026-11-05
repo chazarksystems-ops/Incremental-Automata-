@@ -10,13 +10,15 @@ import { collectedCount, receiptsInWindow } from '../economy/ledger';
 import { GenerationClock } from '../game/clock';
 import { DEFAULT_CONFIG, type UpgradeId } from '../game/config';
 import { Factory, type FactoryCommand, type GameSnapshot, type Machine } from '../game/factory';
-import { describeHazard, laneForGun, laneHazards, snapToLane, type Box, type Hazard, type Lane } from '../game/guides';
+import { describeHazard, laneForGun, laneHazards, recommendCollectorSpot, snapToLane, streamCoverage, type Box, type Hazard, type Lane } from '../game/guides';
 import { History } from '../game/history';
 import { Trial, compareTrials, type TrialResult } from '../game/trial';
 import { GOALS } from '../game/goals';
 import { lossesInWindow } from '../game/losses';
 import { CHECKPOINTS_KEY, SAVE_KEY, parseCheckpoints, parseSave, serializeCheckpoints, serializeSave, type Checkpoint } from '../game/save';
 import { gunOutput } from '../patterns/gun-output';
+import { absolute, measureEnvelope } from '../patterns/envelope';
+import { PLAYTEST_TASKS, buildReport, loadPlaytest, markPlaytest, savePlaytest, type PlaytestState } from './playtest';
 import { LIBRARY } from '../patterns/library';
 import { fitBoard, panBy, screenToCellInt, zoomAt, type Camera } from '../render/camera';
 import { BoardRenderer, type CollectorOverlay, type Overlay } from '../render/renderer';
@@ -39,6 +41,7 @@ const THEME = {
   machine: 'rgba(138,160,180,0.35)',
   machineHighlight: 'rgba(219,230,240,0.9)',
   lanePredicted: 'rgba(126,231,193,0.7)',
+  laneUncollected: 'rgba(245,176,65,0.85)',
   loss: '#f2777a',
   gate: '#f5b041',
   gateFlash: '#fff3c4',
@@ -100,11 +103,13 @@ export function startApp(): void {
   // ---------- game state ----------
   type StartupMessage = { text: string; kind: 'info' | 'warn' | 'error' };
   let startupMessage = null as StartupMessage | null;
+  let loadedFromSave = false;
   function loadOrNew(): Factory {
     const text = storageGet(SAVE_KEY);
     if (text) {
       const r = parseSave(text, blueprintsForFactory);
       if (r.ok) {
+        loadedFromSave = true;
         startupMessage = { text: `Welcome back: loaded your chamber at generation ${r.factory.generation}.`, kind: 'info' };
         return r.factory;
       }
@@ -254,6 +259,8 @@ export function startApp(): void {
   /** Panels that depend on layout/experiment state; called every frame and right after any action. */
   function refreshPanels(): void {
     const fac = f();
+    renderMachines();
+    renderGoal();
     if (mode === 'factory') {
       const t = testedThroughput && testedThroughput.sig === layoutSig(fac) ? testedThroughput : null;
       const text = t ? `${t.rate} / 300 · ${t.lost} lost` : '–';
@@ -283,6 +290,7 @@ export function startApp(): void {
   function undo(): void {
     const e = history[mode].undo(f().snapshot());
     if (!e) return;
+    track('used-undo');
     replaceFactory(restoreSnapshot(e.snapshot));
     say(`Undid "${e.label}". Back to generation ${e.generation}.`);
   }
@@ -308,8 +316,29 @@ export function startApp(): void {
   function currentLanes(fac: Factory = f()): Lane[] {
     return fac.machines.filter((m) => m.kind === 'gun').map((m) => laneForGun(m.id, gun, m.x, m.y, m.transform ?? IDENTITY));
   }
+  /** Guns' insulating keep-out boxes (what streams must stay clear of). */
   function gunBoxes(fac: Factory = f()): Box[] {
-    return fac.machines.filter((m) => m.kind === 'gun').map((m) => ({ id: m.id, x: m.x, y: m.y, width: m.width!, height: m.height! }));
+    return fac.gunKeepOuts();
+  }
+  /** gunId → collectorId | null for every gun's predicted stream. */
+  function coverage(fac: Factory = f()): Map<string, string | null> {
+    return streamCoverage(currentLanes(fac), fac.detectors.map((d) => ({ ...d.config })), fac.detectorParams.gateHalfWidth);
+  }
+
+  function addCollectorFor(gunId: string): void {
+    const fac = f();
+    const lane = currentLanes(fac).find((l) => l.source === gunId);
+    if (!lane) return;
+    const spot = recommendCollectorSpot(lane, fac.gunKeepOuts(), fac.world.width, fac.world.height);
+    if (!spot) return say('There is no room on this stream for a collector before the edge. Try moving the gun.', 'warn');
+    const before = new Set(fac.detectors.map((d) => d.config.id));
+    if (apply({ type: 'build-collector', x: spot.x, y: spot.y, heading: spot.heading })) {
+      const added = f().detectors.find((d) => !before.has(d.config.id));
+      if (added) selected[mode] = added.config.id;
+      machinesSig = '';
+      track('add-collector');
+      say(`Collector placed on the stream at (${spot.x}, ${spot.y}). Press Play to start collecting.`);
+    }
   }
   function machineName(id: string): string {
     if (id === 'preview') return 'The new gun';
@@ -355,6 +384,7 @@ export function startApp(): void {
     if (m === mode) return;
     if (m === 'sandbox' && !sandbox) sandbox = new Factory(newSandbox(gun), blueprintsForFactory);
     mode = m;
+    if (m === 'sandbox') track('tried-sandbox');
     setRunning(false);
     document.body.classList.toggle('mode-sandbox', m === 'sandbox');
     document.body.classList.toggle('mode-factory', m === 'factory');
@@ -479,7 +509,10 @@ export function startApp(): void {
   function renderMachines(): void {
     const fac = f();
     const sel = selectedCollector()?.config.id ?? null;
-    const sig = [mode, sel, ...fac.machines.map((m) => `${m.id}@${m.x},${m.y}`), ...fac.detectors.map((d) => d.config.heading)].join('|');
+    const cov = coverage(fac);
+    const cCost = fac.machineCost('collector');
+    const affordable = cCost !== null && cCost <= fac.economy.energy;
+    const sig = [mode, sel, affordable, cCost, ...fac.machines.map((m) => `${m.id}@${m.x},${m.y}`), ...fac.detectors.map((d) => `${d.config.heading}${d.config.x},${d.config.y}`)].join('|');
     if (sig === machinesSig) return;
     machinesSig = sig;
     $('machines').replaceChildren(
@@ -490,6 +523,27 @@ export function startApp(): void {
         const label = document.createElement('span');
         label.textContent = machineLabel(m);
         li.append(label);
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+        if (m.kind === 'gun') {
+          const covered = cov.get(m.id) ?? null;
+          const chip = document.createElement('span');
+          chip.className = `chip ${covered ? 'ok' : 'warn'}`;
+          chip.dataset.testid = `coverage-${m.id}`;
+          chip.textContent = covered ? '✓ collected' : '⚠ not collected';
+          label.append(' ', chip);
+          if (!covered) {
+            const add = document.createElement('button');
+            add.type = 'button';
+            add.dataset.testid = `collect-${m.id}`;
+            add.dataset.highlight = 'collect-any';
+            add.textContent = cCost === null ? 'Collector limit' : `Add collector · ${cCost} ⚡`;
+            add.disabled = !affordable;
+            add.title = affordable ? 'Build a collector right on this gun\'s stream' : `Needs ${cCost ?? '–'} energy (you have ${fac.economy.energy})`;
+            add.addEventListener('click', () => addCollectorFor(m.id));
+            actions.append(add);
+          }
+        }
         li.addEventListener('mouseenter', () => (hoverMachine = m.id));
         li.addEventListener('mouseleave', () => (hoverMachine = null));
         if (m.kind === 'collector') {
@@ -502,7 +556,7 @@ export function startApp(): void {
             selected[mode] = m.id;
             machinesSig = '';
           });
-          li.append(b);
+          actions.append(b);
         }
         const rm = document.createElement('button');
         rm.type = 'button';
@@ -511,7 +565,8 @@ export function startApp(): void {
         rm.addEventListener('click', () => {
           if (apply({ type: 'remove-machine', id: m.id })) say(`Removed ${m.kind}${m.paid ? `, refunded ${m.paid} energy` : ''}.`);
         });
-        li.append(rm);
+        actions.append(rm);
+        li.append(actions);
         return li;
       }),
     );
@@ -532,6 +587,14 @@ export function startApp(): void {
     $('goal-index').textContent = goal ? `${idx + 1} of ${GOALS.length}` : `${GOALS.length} of ${GOALS.length}`;
     $('goal-name').textContent = goal ? goal.title : 'All goals complete. Keep improving your layout!';
     $('goal-hint').textContent = goal ? goal.hint : 'Try Sandbox mode to prototype layouts without spending energy.';
+    $('goal-steps').replaceChildren(
+      ...(goal?.steps ?? []).map((t) => {
+        const li = document.createElement('li');
+        li.textContent = t;
+        return li;
+      }),
+    );
+    highlightIds = goal ? goal.highlight : [];
     const bar = $('goal-progress');
     bar.setAttribute('aria-valuemax', String(p.target));
     bar.setAttribute('aria-valuenow', String(p.value));
@@ -607,8 +670,14 @@ export function startApp(): void {
         return;
       case 'build-gun': {
         const o = ghostOrigin(cell, transformGrid(gun, transform));
+        const check = f().checkGunPlacement(o.x, o.y, transform);
+        if (!check.ok) {
+          if (check.reason === 'insulation') track('refused-too-close');
+          if (check.reason === 'stream') track('saw-stream-warning');
+        }
         if (apply({ type: 'build-gun', x: o.x, y: o.y, transform })) {
-          say(`Built a Gosper gun at (${o.x}, ${o.y}). Its stream follows the dashed line.`);
+          track('built-gun');
+          say(`Gun built at (${o.x}, ${o.y}). Its stream (orange dashes) is not collected yet: press “Add collector” next to it under Machines.`);
           setTool('select');
         }
         return;
@@ -810,6 +879,7 @@ export function startApp(): void {
       if (run.base) experiment.baselineResult = run.base.result();
       experiment.variantResult = run.variant.result();
       experiment.running = null;
+      track('ran-experiment');
       renderExperiment();
     }
   }
@@ -940,6 +1010,7 @@ export function startApp(): void {
     if (experiment) return say('Finish the experiment (Keep or Discard) before restoring a checkpoint.', 'warn');
     history.factory.record(game.snapshot(), 'restore checkpoint');
     replaceFactory(restoreSnapshot(cp.snapshot));
+    track('restored-checkpoint');
     say(`Restored checkpoint "${cp.name}". Undo returns to where you were.`);
   }
   function renderCheckpoints(): void {
@@ -975,6 +1046,97 @@ export function startApp(): void {
   $('checkpoint-save').addEventListener('click', saveCheckpoint);
   $('undo').addEventListener('click', undo);
   $('redo').addEventListener('click', redo);
+
+  // ---------- playtest guidance ----------
+  let highlightIds: string[] = [];
+  let highlighted: Element[] = [];
+  function applyHighlights(): void {
+    const want = mode === 'factory' && !helpDialog.open ? highlightIds : [];
+    const els = want.flatMap((id) => [...document.querySelectorAll(`[data-testid="${id}"], [data-highlight="${id}"]`)]);
+    for (const el of highlighted) if (!els.includes(el)) el.classList.remove('pulse');
+    for (const el of els) el.classList.add('pulse');
+    highlighted = els;
+  }
+
+  const playtest: PlaytestState = loadPlaytest(storageGet, () => new Date().toISOString());
+  if (loadedFromSave) markPlaytest(playtest, 'reloaded', new Date().toISOString());
+  function track(id: string): void {
+    if (markPlaytest(playtest, id, new Date().toISOString())) {
+      savePlaytest(playtest, storageSet);
+      playtestSig = '';
+    }
+    playtest.counts[id] = (playtest.counts[id] ?? 0) + 1;
+  }
+  let playtestSig = '';
+  function renderPlaytest(): void {
+    if (mode !== 'factory') return;
+    const goals = new Set(game.completedGoals.map((g) => g.id));
+    const done = PLAYTEST_TASKS.map((t) => t.done(playtest, goals));
+    const sig = done.join('');
+    if (sig === playtestSig) return;
+    playtestSig = sig;
+    $('playtest-tasks').replaceChildren(
+      ...PLAYTEST_TASKS.map((t, i) => {
+        const li = document.createElement('li');
+        li.dataset.testid = `task-${t.id}`;
+        li.classList.toggle('done', done[i]!);
+        const tick = document.createElement('span');
+        tick.className = 'tick';
+        tick.textContent = done[i] ? '✓' : '○';
+        const text = document.createElement('span');
+        text.textContent = t.text;
+        li.append(tick, text);
+        return li;
+      }),
+    );
+    $('playtest-count').textContent = `${done.filter(Boolean).length} / ${PLAYTEST_TASKS.length}`;
+  }
+  const notesEl = $('playtest-notes') as HTMLTextAreaElement;
+  notesEl.value = playtest.notes;
+  notesEl.addEventListener('input', () => {
+    playtest.notes = notesEl.value;
+    savePlaytest(playtest, storageSet);
+  });
+  const reportDialog = $('report-dialog') as HTMLDialogElement;
+  $('playtest-report').addEventListener('click', () => {
+    const goals = game.completedGoals.map((g) => ({ id: g.id, generation: g.generation, title: GOALS.find((x) => x.id === g.id)?.title ?? g.id }));
+    ($('report-text') as HTMLTextAreaElement).value = buildReport(playtest, {
+      now: new Date().toISOString(),
+      generation: game.generation,
+      energy: game.economy.energy,
+      guns: game.count('gun'),
+      collectors: game.count('collector'),
+      chamber: game.world.width,
+      rate: game.goalView().rate,
+      lost: game.goalView().lost,
+      goals,
+      completedTasks: new Set(game.completedGoals.map((g) => g.id)),
+    });
+    $('report-status').textContent = '';
+    reportDialog.showModal();
+    ($('report-text') as HTMLTextAreaElement).select();
+  });
+  $('report-copy').addEventListener('click', () => {
+    const text = ($('report-text') as HTMLTextAreaElement).value;
+    void navigator.clipboard?.writeText(text).then(
+      () => ($('report-status').textContent = 'Copied. Paste it into your message to the developers.'),
+      () => ($('report-status').textContent = 'Copy failed. Select the text and copy it manually.'),
+    );
+  });
+
+  $('goal-show').addEventListener('click', () => {
+    const target = highlightIds
+      .flatMap((id) => [...document.querySelectorAll<HTMLElement>(`[data-testid="${id}"], [data-highlight="${id}"]`)])
+      .find((el) => el.offsetParent !== null);
+    if (!target) return say('Nothing to point at right now. Follow the steps on the goal card.', 'warn');
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    target.focus({ preventScroll: true });
+  });
+
+  const helpDialog = $('help-dialog') as HTMLDialogElement;
+  const HELP_SEEN_KEY = 'incremental-automata.help-seen';
+  $('help-open').addEventListener('click', () => helpDialog.showModal());
+  helpDialog.addEventListener('close', () => storageSet(HELP_SEEN_KEY, '1'));
 
   // ---------- RLE dialog (sandbox) ----------
   const dialog = $('rle-dialog') as HTMLDialogElement;
@@ -1028,7 +1190,7 @@ export function startApp(): void {
   window.addEventListener('keyup', (e) => (shiftDown = e.shiftKey));
   window.addEventListener('keydown', (e) => {
     shiftDown = e.shiftKey;
-    if (dialog.open || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
+    if (dialog.open || helpDialog.open || reportDialog.open || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
     const k = e.key;
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (k === 'z' || k === 'Z' || k === 'y' || k === 'Y')) {
       e.preventDefault();
@@ -1160,13 +1322,15 @@ export function startApp(): void {
 
     // ----- overlay -----
     const overlay: Overlay = { collectors: [], guns: [], lanes: [] };
+    const cov = coverage(fac);
     for (const m of fac.machines) {
       if (m.kind !== 'gun') continue;
-      overlay.guns!.push({ x: m.x, y: m.y, width: m.width!, height: m.height!, highlight: m.id === hoverMachine });
+      const keep = absolute(measureEnvelope(gun, m.transform ?? IDENTITY).keepOut, m.x, m.y);
+      overlay.guns!.push({ ...keep, highlight: m.id === hoverMachine });
       const o = gunOutput(gun, m.transform ?? IDENTITY);
       const [hx, hy] = HEADING_VECTORS[o.heading];
       const danger = hazards.some((hz) => hz.source === m.id || (hz.kind !== 'hits-machine' && hz.target === m.id));
-      overlay.lanes!.push({ ax: m.x + o.anchorDx, ay: m.y + o.anchorDy, hx, hy, strong: m.id === hoverMachine, danger });
+      overlay.lanes!.push({ ax: m.x + o.anchorDx, ay: m.y + o.anchorDy, hx, hy, strong: m.id === hoverMachine, danger, uncollected: !cov.get(m.id) });
     }
     overlay.hazardMarks = hazards.map((hz) => ({ x: hz.x, y: hz.y }));
     let previewWarning = '';
@@ -1180,8 +1344,14 @@ export function startApp(): void {
       const g = transformGrid(base, transform);
       const o = ghostOrigin(hover, g);
       const affordable = tool !== 'build-gun' || (fac.machineCost('gun') ?? Infinity) <= fac.economy.energy;
-      overlay.ghost = { grid: g, x: o.x, y: o.y, valid: affordable && stampGrid(w, base, o.x, o.y, { transform }).ok };
+      const check = tool === 'build-gun' ? fac.checkGunPlacement(o.x, o.y, transform) : null;
+      const placeable = check ? check.ok : stampGrid(w, base, o.x, o.y, { transform }).ok;
+      overlay.ghost = { grid: g, x: o.x, y: o.y, valid: affordable && placeable };
       if (tool === 'build-gun') {
+        const keep = absolute(measureEnvelope(gun, transform).keepOut, o.x, o.y);
+        overlay.ghostBorder = { ...keep, valid: affordable && placeable };
+        if (check && !check.ok) previewWarning = `✕ ${check.message}`;
+        else if (!affordable) previewWarning = `✕ Needs ${fac.machineCost('gun')} energy (you have ${fac.economy.energy}).`;
         const out = gunOutput(gun, transform);
         const [hx, hy] = HEADING_VECTORS[out.heading];
         const previewLane = laneForGun('preview', gun, o.x, o.y, transform);
@@ -1193,7 +1363,8 @@ export function startApp(): void {
         ).filter((hz) => hz.source === 'preview' || hz.target === 'preview');
         overlay.lanes!.push({ ax: o.x + out.anchorDx, ay: o.y + out.anchorDy, hx, hy, strong: true, danger: previewHz.length > 0 });
         overlay.hazardMarks!.push(...previewHz.map((hz) => ({ x: hz.x, y: hz.y })));
-        previewWarning = previewHz.map((hz) => `⚠ ${describeHazard(hz, machineName)}`).join(' ');
+        if (!previewWarning) previewWarning = previewHz.map((hz) => `⚠ ${describeHazard(hz, machineName)}`).join(' ');
+        if (previewHz.length) track('saw-stream-warning');
       }
     } else if (hover && (tool === 'build-collector' || tool === 'collector')) {
       const sel = selectedCollector();
@@ -1206,6 +1377,8 @@ export function startApp(): void {
     } else if (hover && tool === 'draw') {
       overlay.hoverCell = hover;
     }
+    applyHighlights();
+    renderPlaytest();
     const pw = $('preview-warning');
     if (pw.textContent !== previewWarning) pw.textContent = previewWarning;
     pw.hidden = !previewWarning;
@@ -1219,6 +1392,7 @@ export function startApp(): void {
   setTransform({ ...IDENTITY });
   const sm = startupMessage as StartupMessage | null;
   if (sm) say(sm.text, sm.kind);
+  if (!storageGet(HELP_SEEN_KEY) && !new URLSearchParams(location.search).has('nohelp')) helpDialog.showModal();
   requestAnimationFrame(frame);
 
   // Read-only debug handle for /playtest and e2e tests (dev builds only).

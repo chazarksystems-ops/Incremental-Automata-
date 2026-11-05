@@ -61,15 +61,18 @@ function* march(l: Lane, w: number, h: number): Generator<{ x: number; y: number
 
 /**
  * Predicted hazards for `lanes` against gun bodies `boxes` on a `w × h` board.
- * A stream hits a machine when the glider's 3×3 plus a 1-cell margin overlaps
- * another machine's footprint (its own source is ignored).
+ * A stream hits a machine when the cells a glider occupies over its 4 phases
+ * overlap another machine's box (its own source is ignored). Pass insulating
+ * keep-out boxes to get "comes within 2 cells of the machine's activity".
  */
 export function laneHazards(lanes: readonly Lane[], boxes: readonly Box[], w: number, h: number): Hazard[] {
   const out: Hazard[] = [];
   for (const l of lanes) {
     for (const p of march(l, w, h)) {
+      // Over its 4 phases a glider's cells span anchor−1 … anchor+3 on each axis
+      // (see the template anchor offsets), so test that whole footprint.
       const hit = boxes.find(
-        (b) => b.id !== l.source && p.x - 1 < b.x + b.width && p.x + 4 > b.x && p.y - 1 < b.y + b.height && p.y + 4 > b.y,
+        (b) => b.id !== l.source && p.x - 1 < b.x + b.width && p.x + 3 >= b.x && p.y - 1 < b.y + b.height && p.y + 3 >= b.y,
       );
       if (hit) {
         out.push({ kind: 'hits-machine', source: l.source, target: hit.id, x: p.x, y: p.y });
@@ -149,4 +152,56 @@ export function snapToLane(
     best = { x: x + d * hx, y, heading: l.heading, source: l.source };
   }
   return best;
+}
+
+export interface CollectorGate {
+  id: string;
+  x: number;
+  y: number;
+  heading: Heading;
+}
+
+/**
+ * Which collector (if any) sits on each stream: same heading, within the
+ * gate's lane tolerance, and downstream of where the stream leaves its gun.
+ * Prediction only — the live counters show what is really collected.
+ */
+export function streamCoverage(lanes: readonly Lane[], gates: readonly CollectorGate[], gateHalfWidth: number): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  for (const l of lanes) {
+    const lat = lateralOf(l.heading, l.ax, l.ay);
+    const start = progressOf(l.heading, l.ax, l.ay);
+    const g = gates.find(
+      (c) =>
+        c.heading === l.heading &&
+        Math.abs(lateralOf(l.heading, c.x, c.y) - lat) <= gateHalfWidth &&
+        progressOf(l.heading, c.x, c.y) > start,
+    );
+    out.set(l.source, g ? g.id : null);
+  }
+  return out;
+}
+
+/**
+ * A good place for a new collector on `lane`: the first point at least
+ * `minSteps` glider periods downstream of the gun that is clear of every
+ * machine's keep-out box and far enough from the edge for gliders to be
+ * confirmed before they leave. Returns null if the stream has no such room.
+ */
+export function recommendCollectorSpot(
+  lane: Lane,
+  keepOuts: readonly Box[],
+  w: number,
+  h: number,
+  opts: { minSteps?: number; edgeMargin?: number } = {},
+): CollectorGate | null {
+  const minSteps = opts.minSteps ?? 6;
+  const edge = opts.edgeMargin ?? 10;
+  const [hx, hy] = HEADING_VECTORS[lane.heading];
+  for (let k = minSteps; ; k++) {
+    const x = lane.ax + hx * k, y = lane.ay + hy * k;
+    if (x < edge || y < edge || x > w - edge - 3 || y > h - edge - 3) return null;
+    const blocked = keepOuts.some((b) => x - 2 < b.x + b.width && x + 5 > b.x && y - 2 < b.y + b.height && y + 5 > b.y);
+    if (!blocked) return { id: 'recommended', x, y, heading: lane.heading };
+  }
 }

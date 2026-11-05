@@ -13,7 +13,7 @@ async function open(page: Page) {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await page.goto('/');
+  await page.goto('/?nohelp');
   await page.waitForFunction(() => !!window.__ia);
   return errors;
 }
@@ -157,7 +157,7 @@ test('the build preview warns when a new stream would hit a machine, and not on 
   const p = await page.evaluate(() => window.__ia.cellToClient(22, 28)); // origin (4, 24)
   await page.mouse.move(p.x, p.y);
   await expect(page.getByTestId('preview-warning')).toBeVisible();
-  await expect(page.getByTestId('preview-warning')).toContainText('stream runs into');
+  await expect(page.getByTestId('preview-warning')).toContainText(/stream .*run into/);
   // A safe spot shows no warning.
   const q = await page.evaluate(() => window.__ia.cellToClient(22, 44));
   await page.mouse.move(q.x, q.y);

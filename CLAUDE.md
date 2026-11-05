@@ -46,6 +46,7 @@ Golly is an optional external cross-check. Neither is a runtime dependency.
 
 Status: Phases 1–4 complete (`docs/PHASE1_REPORT.md` … `docs/PHASE4_REPORT.md`). Next: Phase 5 (feedback and pivot review — needs real playtesters).
 Experiments (incl. failed ones) are logged in `docs/EXPERIMENTS.md`; scripts live in `scripts/experiments/`.
+Human playtest feedback and the changes it caused: `docs/PLAYTEST_RESULTS.md`.
 
 Scripts (keep these names stable — the skills rely on them):
 
@@ -62,8 +63,8 @@ Scripts (keep these names stable — the skills rely on them):
 
 If a script does not exist yet, say so in the report rather than silently skipping it.
 
-Layout: `src/core` (pure engine) · `src/patterns` (RLE + manifest) · `src/detectors` (glider templates, tracker)
-· `src/economy` (ledger) · `src/game` (clock, simulation, factory, config, goals, losses, save, history, trial, guides) · `src/render` · `src/ui` · `src/scenarios` · `tests/{core,game,patterns,render,e2e,fixtures}`. See `docs/ARCHITECTURE.md`.
+Layout: `src/core` (pure engine) · `src/patterns` (RLE + manifest, measured gun output + envelope) · `src/detectors` (glider templates, tracker)
+· `src/economy` (ledger) · `src/game` (clock, simulation, factory, config, goals, losses, save, history, trial, guides) · `src/render` · `src/ui` (app, diagnostics, playtest checklist) · `src/scenarios` · `tests/{core,game,patterns,render,e2e,fixtures}`. See `docs/ARCHITECTURE.md`.
 
 ## Skills in this repo (`.claude/skills/`)
 

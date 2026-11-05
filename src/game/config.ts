@@ -36,6 +36,10 @@ export interface GameConfig {
   chamber: { initialSize: number; expandedSize: number };
   /** A glider within this many cells of the edge it is heading for counts as lost (if never collected). */
   lossBand: number;
+  /** Guns must keep an insulating border (≥ 2 empty cells) from other guns and live cells. */
+  insulation: boolean;
+  /** Refuse builds whose predicted stream would run into a gun (or put a gun into a stream). */
+  blockStreamIntoMachines: boolean;
   /** Generations each experiment test runs (baseline and variant alike). */
   trialGenerations: number;
   /** Saved checkpoints kept per game. */
@@ -48,7 +52,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   rateWindow: 300,
   machineCosts: {
     gun: [0, 10, 25, 50, 100], // owning 1 (the starter) ⇒ next costs 10
-    collector: [0, 15, 30, 60],
+    collector: [0, 10, 25, 50], // the 2nd collector is cheap so a 2nd gun can be collected soon after
   },
   upgrades: [
     {
@@ -66,6 +70,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   ],
   chamber: { initialSize: 128, expandedSize: 192 },
   lossBand: 4,
+  insulation: true,
+  blockStreamIntoMachines: true,
   trialGenerations: 900,
   maxCheckpoints: 5,
 };

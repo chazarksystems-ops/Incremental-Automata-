@@ -15,7 +15,7 @@ async function open(page: Page, mode: 'factory' | 'sandbox' = 'factory') {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await page.goto('/');
+  await page.goto('/?nohelp');
   await page.waitForFunction(() => !!window.__ia);
   if (mode === 'sandbox') {
     await page.getByTestId('mode-sandbox').click();
@@ -92,7 +92,7 @@ test('placing a blueprint validates bounds and overlap', async ({ page }) => {
   await page.keyboard.press('r');
   await expect(page.getByTestId('orientation')).toHaveText('rot90');
   await page.getByTestId('blueprint-gosper-glider-gun').click();
-  await clickCell(page, 127, 127); // gun can't fit at the corner
+  await clickCell(page, 120, 120); // the rotated 9×36 gun can't fit this close to the bottom edge
   await expect(page.getByTestId('message')).toContainText('does not fit');
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('tool-select')).toHaveAttribute('aria-checked', 'true');

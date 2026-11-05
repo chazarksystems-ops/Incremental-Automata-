@@ -25,3 +25,20 @@ tools that open other directions and edges, and expansion.
 
 **Not covered.** Gun A at other positions or orientations; streams heading in other directions merged by
 reflectors (Phase 6); 192×192 chambers.
+
+## 2026-11-05: Is a 1-cell insulating border enough to keep two guns from interacting?
+
+**Trigger.** Playtest round 1: two guns placed one empty column apart wrecked each other.
+
+**Method.** `tests/game/insulation.test.ts`. First, measure the gun's activity area by simulation, in all 8
+orientations. Then place a second gun at every position the game's placement rules accept where the two 1-cell
+borders touch, excluding stream-crossing layouts. Both guns' activity windows must be bit-identical to solo runs at
+generations 15…120.
+
+**Result.** The activity area equals the 36×9 box in every orientation. The first run **failed**: one position
+diverged at generation 29, where the neighbour's emitted glider grazed the gun's corner. Root cause: the predicted
+lane started at the stream glider nearest the gun at generation 160, up to a full period downstream of the true
+exit point, and the hazard check sampled only phase-0 positions. With the lane starting at the measured exit point
+and the glider's 4-phase footprint checked, **all positions pass**. Mutation check: border 0 fails.
+
+**Decision.** Border = 1 cell, enforced at build time. The reported placement is kept as a regression test.
